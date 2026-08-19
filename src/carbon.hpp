@@ -45,8 +45,12 @@ public:
 	i64  numel()   const {return _numel; }
 	i32  ndim()    const {return _ndim;}
 
+	//	accessors
 	T  at(std::vector<i32> idxs) const;
 	T& at(std::vector<i32> idxs);
+	auto begin() {return _data.begin();}
+	auto end()   {return _data.end();}
+	// tensor operator[](const vi32 idxs) const ;
 
 	//	carbon tensor factory
 	void   fill(T value);
@@ -63,7 +67,7 @@ public:
 	static tensor linspace(f32 start, f32 end, i32 num);
 	static tensor arange(f32 start, f32 end, f32 step);
 
-	//	transcendentals; inplace
+	//	inplace math
 	void log_();
 	void exp_();
 	void sin_();
@@ -73,6 +77,23 @@ public:
 	void sigmoid_();
 	void square_();
 	void cube_();
+	void pow_(const T exponent);
+	
+	template <typename U>
+	friend std::ostream& operator<<(std::ostream& os, const tensor<U>& t);
+	bool   operator==(const tensor<T>& other) const;
+	bool   operator!=(const tensor<T>& other) const;
+	// tensor operator+(const tensor& other) const;
+	// tensor operator-(const tensor& other) const;
+	// tensor operator*(const tensor& other) const;
+	// tensor operator/(const tensor& other) const;
+	// tensor operator*(f32 scalar) const;
+	// tensor operator/(f32 scalar) const;
+	// tensor operator+(f32 scalar) const;
+
+	// tensor operator-(f32 scalar) const;
+	// tensor pow(const f32 exponent) const; 
+
 
 };
 

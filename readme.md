@@ -4,7 +4,10 @@
 _/ ___\\__  \\_  __ \ __ \ /  _ \ /    \ 
 \  \___ / __ \|  | \/ \_\ (  <_> )   |  \
  \___  >____  /__|  |___  /\____/|___|  /
-     \/     \/          \/            \/ ```
+     \/     \/          \/            \/ 
+```
+
+
 Carbon is a C++20 tensor library meant to be the base on which neural nets are built. Carbon is built upon BLAS and provides automatic differentiation out of the box.
 
 Carbon builds upon earlier work done in [https://github.com/agastyapatri/benzene](benzene). This project adds two important features: templating + autodiff. 

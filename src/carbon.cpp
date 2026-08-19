@@ -1,5 +1,6 @@
 #include "carbon.hpp"
 #include <algorithm>
+#include <iomanip>
 #include <ranges>
 #include <execution>
 #include <random>
@@ -422,14 +423,87 @@ void tensor<T>::cube_(){
 }
 
 
+template<typename T>
+void tensor<T>::pow_(const T exponent){
+	auto generator = [exponent](T val){return std::pow(val, exponent);};
+	if(_numel >= PARALLEL_THRESHOLD){
+		std::transform(
+			std::execution::par_unseq, 
+			_data.begin(), 
+			_data.end(), 
+			_data.begin(),
+			generator
+		); 
+	}else{
+		std::transform(
+			std::execution::unseq, 
+			_data.begin(), 
+			_data.end(), 
+			_data.begin(),
+			generator
+		); 
+
+	}
+}
 
 
 
 
+template<typename U>
+static inline void print_tensor_recursive(std::ostream& os, const tensor<U>& t, int dim, int offset, int depth){
+	if(dim == t.ndim() - 1){
+		os << "[";
+		for(int i = 0; i < t.shape()[dim]; i++){
+			os << std::setw(10) << std::fixed << std::setprecision(7) << t.data()[offset + i * t.strides()[dim]];
+			if(i < t.shape()[dim] - 1) os << ", ";
+		}
+		os << "]";
+	} else {
+		os << "[";
+		for(int i = 0; i < t.shape()[dim]; i++){
+			print_tensor_recursive(os, t, dim+1, offset + i*t.strides()[dim], depth + 1);
+		if(i < t.shape()[dim] - 1){
+				os << ",";
+				int newlines = t.ndim() - 1 - dim;
+				for(int n = 0; n < newlines; n++) os << "\n";
+				for(int d = 0; d < depth + 1; d++) os << " ";
+			}
+		}
+		os << "]";
+	}
+}
+template<typename U> 
+std::ostream& operator<<(std::ostream& os, const tensor<U>& t){
+	print_tensor_recursive(os, t, 0, 0, 0);
+	os << "\n";
+	return os;
+}
+
+template<typename T>
+bool tensor<T>::operator==(const tensor<T>& other) const{
+	if(_shape != other._shape) return false; 
+	for(i64 i = 0; i < _numel; i++){
+		if(this->_data[i] != other._data[i])
+			return false;
+	}
+	return true; 
+
+}
+
+template<typename T> 
+bool tensor<T>::operator!=(const tensor<T>& other) const{
+	return !(*(this) == other);
+}
+
+//	explicit instantation, apparently
 template class tensor<f32>;
 template class tensor<f64>;
 template class tensor<i32>;
 template class tensor<i64>;
+template std::ostream& operator<<(std::ostream& os, const tensor<f32>& t);
+template std::ostream& operator<<(std::ostream& os, const tensor<f64>& t);
+template std::ostream& operator<<(std::ostream& os, const tensor<i32>& t);
+template std::ostream& operator<<(std::ostream& os, const tensor<i64>& t);
 }
 
 

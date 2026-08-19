@@ -1,16 +1,17 @@
 #include "carbon.hpp"
 #include <iostream> 
-#define type double
+#define type float
 
 
 
 int main(){
 	carbon::tensor<type>::manual_seed(0);
-	carbon::tensor<type> a = carbon::tensor<type>::randn({5,5});
-	a.cube_();
-	for(auto i : a.data())
-		std::cout << i << " ";
+	carbon::tensor<float> a = carbon::tensor<float>::randn({3,3,3});
+	std::cout << a << std::endl;
 	std::cout << std::endl;
+	a.pow_(3);
+	std::cout << a << std::endl;
 	return 0;
+
 }
 
