@@ -1,6 +1,7 @@
 #include "carbon.hpp"
 #include <algorithm>
 #include <iomanip>
+#include <openblas/cblas.h> 
 #include <ranges>
 #include <execution>
 #include <random>
@@ -32,6 +33,53 @@ bool tensor<T>::is_contiguous() const{
 	}
 	return true;
 }
+
+
+template<typename T> 
+std::optional<std::vector<i32>> tensor<T>::broadcast_shapes(const std::vector<i32>& shape1, const std::vector<i32>& shape2) const{
+	//	the smaller tensor is stretched over the larger; out takes the shape of the larger. 
+	i32 ndim1 = shape1.size(); 
+	i32 ndim2 = shape2.size();
+	i32 out_ndim = std::max(ndim1, ndim2);
+	std::vector<i32> out_shape(out_ndim);
+	for(i32 i = 0; i < out_ndim; i++){
+		i32 d1 = (i < out_ndim - ndim1) ? 1 : shape1[i - (out_ndim - ndim1)];
+		i32 d2 = (i < out_ndim - ndim2) ? 1 : shape2[i - (out_ndim - ndim2)];
+		if(d1 == d2){
+			out_shape[i] = d1; 
+		} else if(d1 == 1){
+			out_shape[i] = d2;
+		} else if(d2 == 1){
+			out_shape[i] = d1;
+		} else{
+			return std::nullopt;
+		}
+	}
+	return out_shape;
+}
+
+template<typename T>
+std::vector<i32> tensor<T>::reduced_shape(i32 axis) const{
+	std::vector<i32> outshape;
+	for(i32 i = 0; i < this->_ndim; i++){
+		if(i != (i32)axis)
+			outshape.push_back(this->_shape[i]); 
+	}
+	return outshape;
+}
+
+template<typename T>
+std::vector<i32> tensor<T>::flat_idx_to_coord(i64 idx) const {
+	std::vector<i32> coords(this->_ndim, 0);
+	for(i32 j = 0; j < this->_ndim; j++){
+		coords[j] = idx / this->_strides[j];
+		idx  = idx % this->_strides[j];
+	}
+	return coords;
+}
+
+
+
 
 template<typename T>
 i64 tensor<T>::offset(std::vector<i32> idxs) const{
@@ -494,6 +542,119 @@ template<typename T>
 bool tensor<T>::operator!=(const tensor<T>& other) const{
 	return !(*(this) == other);
 }
+
+
+
+
+
+
+
+template<typename T>
+tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
+	// assert(this->_shape == other._shape);
+	auto outshape = broadcast_shapes(this->_shape, inp2._shape);
+	if(!outshape){
+		throw std::runtime_error("Tensors are not broadcast compatible.");
+	}
+	tensor<T> out(outshape.value());
+
+	//	if both shapes are equal, simply add elementwise.
+	if(this->_shape == inp2._shape){
+		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
+		cblas_saxpy(
+			out._numel, 
+			op,
+			inp2._data.data(), 1, 
+			out._data.data(), 1
+		);
+		return out;
+	}
+
+	// Generalized (..., N) + (N) case
+	if (inp2._ndim == 1 && this->_shape.back() == inp2._shape[0]) {
+		i32 N = inp2._shape[0];
+		i32 total_rows = this->_numel / N; 
+		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
+		#pragma omp parallel for
+		for (i32 i = 0; i < total_rows; i++) {
+			cblas_saxpy(
+				N,
+				op,
+				inp2._data.data(), 1, 
+				out._data.data() + (i * N), 1
+			);
+		}
+		return out;
+	}
+
+	//	(....,  K, N) + (K, N)
+	if(this->_ndim > 2 && inp2._ndim == 2){
+		i32 N = inp2._shape[0]*inp2._shape[1];
+		i32 num_iters = std::accumulate(this->_shape.begin(), this->_shape.end() - 2, 1, std::multiplies<i32>()); 
+		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
+		#pragma omp parallel for
+		for(i32 i = 0; i < num_iters; i++){
+			cblas_saxpy(
+				N, 
+				op, 
+				inp2._data.data(), 1, 
+				out._data.data() + (i*N), 1
+			);
+		}
+		return out;
+	}
+
+	if(inp2._numel == 1){
+		float scalar = op * inp2._data[0];
+		#pragma omp parallel for
+		for(i64 i = 0; i < _numel; i++)
+			out._data[i] = this->_data[i] + scalar;
+		return out;
+	}
+
+	throw std::runtime_error("Broacasting pattern not currently handled by carbon");
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //	explicit instantation, apparently
 template class tensor<f32>;

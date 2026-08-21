@@ -2,6 +2,7 @@
 #define CARBON_TENSOR_HPP
 
 #include <cstdint>
+#include <optional>
 #include <random>
 #include <vector>
 #include <random>
@@ -33,6 +34,17 @@ private:
 	bool is_contiguous() const;
 	// tensor contiguous() const;
 
+	//	given the location of an element in the flat data vector, returns the true location.
+	std::vector<i32> flat_idx_to_coord(i64 idx) const;
+
+	// calculates the reduced dimesions for the output of tensor reductions 
+	std::vector<i32> reduced_shape(i32 axis) const;
+
+	//	checks if another tensor is compatible for broadcasted arithmetic according to
+	//	the NumPy broadcasting rules.
+	std::optional<std::vector<i32>> broadcast_shapes(const std::vector<i32>& s1, const std::vector<i32>& s2) const;
+
+	tensor<T> arithmetic(const tensor<T>& inp2, f32 op) const ; 
 
 public:
 	tensor() = default; 
@@ -50,7 +62,7 @@ public:
 	T& at(std::vector<i32> idxs);
 	auto begin() {return _data.begin();}
 	auto end()   {return _data.end();}
-	// tensor operator[](const vi32 idxs) const ;
+	// tensor operator[](const std::vector<i32> idxs) const ;
 
 	//	carbon tensor factory
 	void   fill(T value);
