@@ -95,8 +95,8 @@ public:
 	friend std::ostream& operator<<(std::ostream& os, const tensor<U>& t);
 	bool   operator==(const tensor<T>& other) const;
 	bool   operator!=(const tensor<T>& other) const;
-	// tensor operator+(const tensor& other) const;
-	// tensor operator-(const tensor& other) const;
+	tensor operator+(const tensor& other) const;
+	tensor operator-(const tensor& other) const;
 	// tensor operator*(const tensor& other) const;
 	// tensor operator/(const tensor& other) const;
 	// tensor operator*(f32 scalar) const;
@@ -105,6 +105,8 @@ public:
 
 	// tensor operator-(f32 scalar) const;
 	// tensor pow(const f32 exponent) const; 
+	template<typename U>
+	friend tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2);
 
 
 };

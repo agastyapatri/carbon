@@ -1,12 +1,11 @@
 #include "carbon.hpp"
+#include "blas.hpp"
 #include <algorithm>
 #include <iomanip>
-#include <openblas/cblas.h> 
 #include <ranges>
 #include <execution>
 #include <random>
 #include <assert.h>
-static constexpr int PARALLEL_THRESHOLD = 65536; //2^16
 
 namespace carbon{
 
@@ -545,10 +544,6 @@ bool tensor<T>::operator!=(const tensor<T>& other) const{
 
 
 
-
-
-
-
 template<typename T>
 tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
 	// assert(this->_shape == other._shape);
@@ -561,12 +556,7 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
 	//	if both shapes are equal, simply add elementwise.
 	if(this->_shape == inp2._shape){
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		cblas_saxpy(
-			out._numel, 
-			op,
-			inp2._data.data(), 1, 
-			out._data.data(), 1
-		);
+		blas<T>::axpy(out._numel, op, inp2._data.data(), 1, out._data.data(), 1);
 		return out;
 	}
 
@@ -575,14 +565,8 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
 		i32 N = inp2._shape[0];
 		i32 total_rows = this->_numel / N; 
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		#pragma omp parallel for
 		for (i32 i = 0; i < total_rows; i++) {
-			cblas_saxpy(
-				N,
-				op,
-				inp2._data.data(), 1, 
-				out._data.data() + (i * N), 1
-			);
+			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + (i*N), 1);
 		}
 		return out;
 	}
@@ -592,21 +576,15 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
 		i32 N = inp2._shape[0]*inp2._shape[1];
 		i32 num_iters = std::accumulate(this->_shape.begin(), this->_shape.end() - 2, 1, std::multiplies<i32>()); 
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		#pragma omp parallel for
 		for(i32 i = 0; i < num_iters; i++){
-			cblas_saxpy(
-				N, 
-				op, 
-				inp2._data.data(), 1, 
-				out._data.data() + (i*N), 1
-			);
+			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + (i*N), 1);
+
 		}
 		return out;
 	}
 
 	if(inp2._numel == 1){
 		float scalar = op * inp2._data[0];
-		#pragma omp parallel for
 		for(i64 i = 0; i < _numel; i++)
 			out._data[i] = this->_data[i] + scalar;
 		return out;
@@ -617,8 +595,27 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
 }
 
 
+template<typename T>
+tensor<T> tensor<T>::operator+(const tensor<T>& other) const{
+	return this->arithmetic(other, 1.0f);
+}
+
+template<typename T>
+tensor<T> tensor<T>::operator-(const tensor<T>& other) const{
+	return this->arithmetic(other, -1.0f);
+}
 
 
+template<typename U>
+tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
+	assert(inp1._shape[0] == inp2._shape[0]);
+	i32 N = inp1._shape[0];
+	tensor<U> out({1});
+	U res = blas<U>::dot(N, inp1._data.data(), 1, inp2._data.data(), 1);
+	out._data[0] = res;
+	return out;
+
+}
 
 
 

@@ -5,11 +5,8 @@
 
 int main(){
 	carbon::tensor<type>::manual_seed(0);
-	carbon::tensor<float> a = carbon::tensor<float>::randn({3,3,3});
-	std::cout << a << std::endl;
-	std::cout << std::endl;
-	a.pow_(3);
-	std::cout << a << std::endl;
+	carbon::tensor<float> a = carbon::tensor<float>::randn({1,10});
+	carbon::tensor<float> b = carbon::tensor<float>::randn({1,10});
 	return 0;
 
 }
