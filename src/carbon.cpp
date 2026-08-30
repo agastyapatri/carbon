@@ -608,7 +608,8 @@ tensor<T> tensor<T>::operator-(const tensor<T>& other) const{
 
 template<typename U>
 tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
-	assert(inp1._shape[0] == inp2._shape[0]);
+	assert(inp1._shape[inp1._ndim - 1] == inp2._shape[inp2._ndim - 1]);
+
 	i32 N = inp1._shape[0];
 	tensor<U> out({1});
 	U res = blas<U>::dot(N, inp1._data.data(), 1, inp2._data.data(), 1);
@@ -617,11 +618,52 @@ tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
 
 }
 
+template<typename U>
+tensor<U> gemm(const tensor<U>& inp1, const tensor<U>& inp2){
+	assert(inp1._shape[1] == inp2._shape[0]);
+	i32 M = inp1._shape[0];		// inp1.rows
+	i32 N = inp2._shape[1];		// inp2.col
+	i32 K = inp1._shape[1];		// inp1.cols
+	tensor<U> out({M, N});
+	blas<U>::gemm(
+		CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+		M, N, K, 
+		1.0f, 
+		inp1._data.data(), K, 
+		inp2._data.data(), N,
+		0.0f, 
+		out._data.data(), N
+	);
+	return out;
+}
 
 
 
 
 
+
+template<typename U>
+tensor<U> gemv(const tensor<U>& inp1, const tensor<U>& inp2){
+	assert(inp1._ndim == 2);
+	assert(inp2._ndim == 1);
+	assert(inp1._shape[1] == inp2._shape[0]);
+	i32 M = inp1._shape[0];
+	i32 N = inp1._shape[1];
+	tensor<U> out({M});
+	blas<U>::gemv(
+		CblasRowMajor, CblasNoTrans, 
+		M, N, 
+		1.0f, 
+		inp1._data.data(), N, 
+		inp2._data.data(), 1,
+		0.0f, 
+		out._data.data(),
+		1
+	);
+	
+
+	return out;
+}
 
 
 
@@ -662,6 +704,21 @@ template std::ostream& operator<<(std::ostream& os, const tensor<f32>& t);
 template std::ostream& operator<<(std::ostream& os, const tensor<f64>& t);
 template std::ostream& operator<<(std::ostream& os, const tensor<i32>& t);
 template std::ostream& operator<<(std::ostream& os, const tensor<i64>& t);
+
+template tensor<f32> dot(const tensor<f32>& inp1, const tensor<f32>& inp2);
+template tensor<f64> dot(const tensor<f64>& inp1, const tensor<f64>& inp2);
+template tensor<i32> dot(const tensor<i32>& inp1, const tensor<i32>& inp2);
+template tensor<i64> dot(const tensor<i64>& inp1, const tensor<i64>& inp2);
+
+template tensor<f32> gemm(const tensor<f32>& inp1, const tensor<f32>& inp2);
+template tensor<f64> gemm(const tensor<f64>& inp1, const tensor<f64>& inp2);
+template tensor<i32> gemm(const tensor<i32>& inp1, const tensor<i32>& inp2);
+template tensor<i64> gemm(const tensor<i64>& inp1, const tensor<i64>& inp2);
+
+template tensor<f32> gemv(const tensor<f32>& inp1, const tensor<f32>& inp2);
+template tensor<f64> gemv(const tensor<f64>& inp1, const tensor<f64>& inp2);
+template tensor<i32> gemv(const tensor<i32>& inp1, const tensor<i32>& inp2);
+template tensor<i64> gemv(const tensor<i64>& inp1, const tensor<i64>& inp2);
 }
 
 

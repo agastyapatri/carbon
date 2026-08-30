@@ -17,6 +17,22 @@ typedef int64_t  i64;
 typedef float  	 f32; 
 typedef double   f64; 
 
+template<typename U> 
+class tensor;
+
+template<typename U> 
+tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2);
+
+template<typename U>
+tensor<U> matmul(const tensor<U>& inp1, const tensor<U>& inp2);
+
+template<typename U>
+tensor<U> gemm(const tensor<U>& inp1, const tensor<U>& inp2);
+
+template<typename U>
+tensor<U> gemv(const tensor<U>& inp1, const tensor<U>& inp2);
+
+
 
 template<typename T>
 class tensor{
@@ -107,6 +123,15 @@ public:
 	// tensor pow(const f32 exponent) const; 
 	template<typename U>
 	friend tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2);
+
+	template<typename U>
+	friend tensor<U> matmul(const tensor<U>& inp1, const tensor<U>& inp2);
+
+	template<typename U>
+	friend tensor<U> gemm(const tensor<U>& inp1, const tensor<U>& inp2);
+
+	template<typename U>
+	friend tensor<U> gemv(const tensor<U>& inp1, const tensor<U>& inp2);
 
 
 };
