@@ -7,133 +7,96 @@ _/ ___\\__  \\_  __ \ __ \ /  _ \ /    \
      \/     \/          \/            \/ 
 ```
 
+# carbon
 
-Carbon is a C++20 tensor library meant to be the base on which neural nets are built. Carbon is built upon BLAS and provides automatic differentiation out of the box.
+Carbon is a C++20 tensor library, intended as the foundation for building neural networks. It is a from-scratch rewrite of the earlier [benzene](https://github.com/agastyapatri/benzene) project, adding two things: **templating** over element type, and (planned) **automatic differentiation**.
 
-Carbon builds upon earlier work done in [https://github.com/agastyapatri/benzene](benzene). This project adds two important features: templating + autodiff. 
+> **Status: early development (v0.0.1).** The templated tensor, BLAS dispatch layer, and a first set of ops exist. Autograd is designed (see [Roadmap](#roadmap)) but not yet implemented.
 
+## What exists today
 
+### `carbon::tensor<T>` (`src/carbon.hpp`, `src/carbon.cpp`)
 
-##  Roadmap 
-The changes I want to make are deep structural ones. The way i'm going to tackle both are: implement templating first, storage / graph split, autograd on top of that split. 
+A dense, row-major, N-dimensional array backed by `std::vector<T>`, with shape and stride bookkeeping. It is explicitly instantiated for `f32`, `f64`, `i32` and `i64`.
 
+Type aliases: `u32 u64 u08 i32 i64 f32 f64`.
 
-###  1. **Templating:** `carbon::tensor` -> `carbon::tensor<T>`
-Things to take a note of: `cblas` is used whenever possible, but `cblas` only provides functions for single- and double-precision floating points; `cblas_sgemm` and `cblas_dgemm` being two. In the current structure of the code, internal helpers call `cblas_saxpy` directly. Order of business: 
+| Area | API |
+|---|---|
+| Construction | `tensor<T>(shape)` (zero-initialised), `fill(v)` |
+| Factories | `zeros`, `ones`, `eye`, `linspace`, `arange` |
+| Random | `randn`, `randu`, `rand_normal(shape, mean, std)`, He init (`randn_he`, `randu_he`), Xavier init (`randn_xavier`, `randu_xavier`), `manual_seed` |
+| Accessors | `data()`, `shape()`, `strides()`, `numel()`, `ndim()`, `at({i, j, ...})`, `begin()/end()` |
+| In-place math | `log_ exp_ sin_ cos_ tanh_ relu_ sigmoid_ square_ cube_ pow_(e)` |
+| Arithmetic | `operator+`, `operator-` with NumPy-style broadcasting (via BLAS `axpy`); `==`, `!=` |
+| Linear algebra | `dot`, `gemv` (matrix x vector), `gemm` (matrix x matrix) |
+| I/O | `operator<<` pretty-prints tensors of any rank |
 
-1.  Make `tensor` a class template. `std::vector<float> _data` -> `std::vector<T> _data`
-1.  Introduce a small `blas_traits<T>` that routes operations to `cblas_saxpy / cblas_daxpy / cblas_sgemm / cblas_dgemm` for `f32` and `f64`. In all other cases, the function must fall back to a plain loop. 
-3.  Move implementations to the header file, the implementation of a templated class must be visible at instantiation. Since the implementation is going to be many lines, it would also make sense for `f32 / f64` to have explicit instantiation in one .cpp file. 
-4.  All functions of the form `friend tensor function_name(type arg)` need to be changed to `template<typename T> friend tensor<T> function_name(type args)`
-5.  Mixed type ops are not going to be allowed: `(carbon::tensor<f32> + carbon::tensor<f64>)` type ops will requie explicit casting with `.cast<T>`. 
+In-place elementwise ops use `std::transform` with `std::execution::par_unseq` once a tensor has at least 2^16 elements, and `unseq` below that.
 
+### `carbon::blas<T>` (`src/blas.hpp`)
 
-###  2. Splitting storage form the graph node. 
-`carbon::tensor<T>` stays as is, pure data, shape, strides, no grad awareness. This just handles the data and becomes the leaf storage type.
+A traits struct that maps an element type to the right BLAS routines:
 
-1.  Create a wrapper `carbon::variable<T>` around:
--   `std::shared_ptr<carbon::tensor<T> data` 
--   `std::shared_ptr<carbon::tensor<T> grad` 
--   `bool requires_grad`
--   `std::shared_ptr<Node> grad_fn`
+- `blas<f32>` calls `cblas_saxpy / sdot / sgemm / sgemv`
+- `blas<f64>` calls `cblas_daxpy / ddot / dgemm / dgemv`
+- the primary template `blas<T>` is a plain-loop fallback (used for `i32`, `i64`), so integer tensors work with the same API.
 
-2.  Switching from value semantics everywhere to shared storage. Autograd needs many `Variable`s to be able to reference the same underlying data without triggering deep copies. `std::shared_ptr<tensor<T>>` achieves this cheaplywithout rewriting the whole allocation model.
+Each provides `axpy`, `dot`, `gemm` and `gemv`.
 
-###  3. The autograd engine itself.
-1.  `node` base class: holds `weak_ptrs` to input `variable`s and a `backward(const tensor<T>& grad_output)` virtual method that computes and accumulates gradients into each inputs `.grad` 
-2.  `variable<T>::backward()`: topological sorting from the output node (post order DFS), then walk it in reverse, calling each nodes' `backward()`
-3. **Every op in the library needs a forward/backward pair.**
-4.  Broadcasting needs to be handled specially. Backward through a broadcast requires summing the gradient back down to the original, pre-broadcast shape. 
+### Example (`main.cpp`)
 
+```cpp
+#include "carbon.hpp"
+#include <iostream>
 
-###  4. Utilities + Validation
-1.  `no_grad()` scope guard, `.detach()`, `zero_grad()`, leaf  vs non-leaf tracking. 
-2.  Validating gradient comparisons by comparing them with finite differences.
-
-
-
-##  Notes 
-Inherited from an earlier design, `tensor::arithmetic(const tensor& inp2, f32 op)` is a private helper function used in `tensor::operator+` and `tensor::operator-`. `arithmetic` uses `cblas_saxpy` to perform elementwise addition / subtraction on two `tensors`. Changes need to be made to this function and the way it is structured in order to handle both single- and double-precision as well as integer tensors. 
-
-There are two real ways to do this: 
-1.  Conditional branching based on the type of the tensors: 
-    ```cpp
-    if constexpr(std::is_same_v<T, float>){
-        //cblas_saxpy
-    }else if constexpr(std::is_same_v<T, double>){
-        //cblas_daxpy
-    }else{
-        //plain loop
-    }
-    ```
-2. A small traits type `blas<T>` with `blas<T>::axpy()`. `blas<T>::gemm()`, `blas<T>::dot()`, etc.
-This traits struct isn't a regular struct that can be called and have methods. Its a template whose job is purely to map "a type" to a "set of associated behaviour". 
-
-
-```cpp 
-
-template<typename T>
-struct blas {
-    static void axpy(int n, T alpha,
-                     const T* x, int incx,
-                     T* y, int incy)
-    {
-        for (int i = 0; i < n; ++i) {
-            y[i * incy] += alpha * x[i * incx];
-        }
-    }
-
-    static T dot(int n,
-                 const T* x, int incx,
-                 const T* y, int incy)
-    {
-        T result{};
-
-        for (int i = 0; i < n; ++i) {
-            result += x[i * incx] * y[i * incy];
-        }
-
-        return result;
-    }
-};
-
-template<>
-struct blas<float> {
-    static void axpy(int n, float alpha,
-                     const float* x, int incx,
-                     float* y, int incy)
-    {
-        cblas_saxpy(n, alpha, x, incx, y, incy);
-    }
-
-    static float dot(int n,
-                     const float* x, int incx,
-                     const float* y, int incy)
-    {
-        return cblas_sdot(n, x, incx, y, incy);
-    }
-};
-
-
-template<>
-struct blas<double> {
-    static void axpy(int n, double alpha,
-                     const double* x, int incx,
-                     double* y, int incy)
-    {
-        cblas_daxpy(n, alpha, x, incx, y, incy);
-    }
-
-    static double dot(int n,
-                      const double* x, int incx,
-                      const double* y, int incy)
-    {
-        return cblas_ddot(n, x, incx, y, incy);
-    }
-};
-
-
-
+int main(){
+    using T = carbon::f32;
+    auto a = carbon::tensor<T>::randn({10, 10});
+    auto b = carbon::tensor<T>::randn({10});
+    auto c = carbon::gemv(a, b);   // 10x10 matrix times length-10 vector
+    std::cout << c << std::endl;
+}
 ```
 
+## Building
 
+Requirements: a C++20 compiler, CMake >= 4.0, and OpenBLAS (headers are included as `<openblas/cblas.h>`).
+
+```sh
+cmake -S . -B build
+cmake --build build
+./build/carbon
+```
+
+`compile_flags.txt` holds the clangd flags (`-std=c++20 -Wall -Wextra -Wpedantic -Isrc/`). The `Makefile` and the checked-in `main` binary are leftovers from an earlier layout and are stale (the Makefile references a `tensor.cpp` that no longer exists); use CMake.
+
+## Project layout
+
+```text
+main.cpp          example / scratch driver
+CMakeLists.txt    build (links OpenBLAS via find_package(BLAS))
+src/carbon.hpp    tensor<T> class declaration, type aliases
+src/carbon.cpp    tensor<T> implementation + explicit instantiations
+src/blas.hpp      blas<T> traits (BLAS dispatch / generic fallback)
+```
+
+(`src/carbon_copy.*` are untracked-by-design backups and git-ignored.)
+
+## Known gaps
+
+- `matmul` is declared but not defined.
+- Only `+` and `-` are implemented as operators; `*`, `/`, scalar ops and `pow` are commented out.
+- The generic (non-BLAS) `blas<T>::gemm` indexes `B_at(k, k)` where it should be `B_at(k, j)`, so integer `gemm` results are wrong.
+- `blas<f64>::gemv` and the generic `gemv` take `alpha`/`beta` as `f32` rather than `T`.
+- `tensor` currently has value semantics; no autograd, no views/slicing, no reductions yet.
+- No test suite.
+
+## Roadmap
+
+The plan is deep and structural: templating first, then a storage/graph split, then autograd on top.
+
+1. **Templating (mostly done).** `tensor` -> `tensor<T>`, `blas<T>` traits routing to `cblas_*` for `f32`/`f64` with a plain-loop fallback, explicit instantiation for the supported types. Mixed-type ops will not be allowed implicitly; they will need an explicit `.cast<T>()`.
+2. **Storage / graph split.** `tensor<T>` stays pure data (data, shape, strides, no grad awareness). A new `variable<T>` wraps `shared_ptr<tensor<T>> data`, `shared_ptr<tensor<T>> grad`, `requires_grad`, and `shared_ptr<node> grad_fn`, so many variables can share storage without deep copies.
+3. **Autograd engine.** A `node` base class holding `weak_ptr`s to its input variables and a virtual `backward(const tensor<T>& grad_output)`. `variable<T>::backward()` does a post-order DFS topological sort and walks it in reverse. Every op needs a forward/backward pair, and broadcasting backward must sum gradients back down to the pre-broadcast shape.
+4. **Utilities and validation.** `no_grad()` scope guard, `.detach()`, `zero_grad()`, leaf vs. non-leaf tracking, and gradient checking against finite differences.

@@ -1,10 +1,12 @@
 #ifndef CARBON_TENSOR_HPP
 #define CARBON_TENSOR_HPP
 
+// #include "blas.hpp"
 #include <cstdint>
 #include <optional>
 #include <random>
 #include <vector>
+#include <concepts>
 #include <random>
 
 namespace carbon{
@@ -16,6 +18,7 @@ typedef int32_t  i32;
 typedef int64_t  i64; 
 typedef float  	 f32; 
 typedef double   f64; 
+static constexpr int PARALLEL_THRESHOLD = 65536; //2^16
 
 template<typename U> 
 class tensor;
@@ -39,9 +42,9 @@ class tensor{
 private: 
 	std::vector<T> _data;
 	std::vector<i32> _shape;
-	std::vector<i32> _strides;
-	i64  _numel;
-	i32  _ndim;
+	std::vector<i64> _strides;
+	i64  _numel = 0;
+	i32  _ndim = 0;
 
 	void compute_strides();
 	static std::mt19937 rand_engine;
@@ -50,26 +53,32 @@ private:
 	bool is_contiguous() const;
 	// tensor contiguous() const;
 
-	//	given the location of an element in the flat data vector, returns the true location.
 	std::vector<i32> flat_idx_to_coord(i64 idx) const;
 
-	// calculates the reduced dimesions for the output of tensor reductions 
 	std::vector<i32> reduced_shape(i32 axis) const;
 
-	//	checks if another tensor is compatible for broadcasted arithmetic according to
-	//	the NumPy broadcasting rules.
 	std::optional<std::vector<i32>> broadcast_shapes(const std::vector<i32>& s1, const std::vector<i32>& s2) const;
 
-	tensor<T> arithmetic(const tensor<T>& inp2, f32 op) const ; 
+	tensor<T> arithmetic(const tensor<T>& inp2, T op) const ; 
+
+	// template<typename F> 
+	// void apply_(F f){
+	// 	if(_numel >= PARALLEL_THRESHOLD){
+	// 		std::transform(std::execution::par_unseq, _data.begin(), _data.end(), _data.begin(), f);
+	// 	}else{
+	// 		std::transform(std::execution::unseq, _data.begin(), _data.end(), _data.begin(), f);
+	// 	}
+	// }
+
 
 public:
-	tensor() = default; 
+	tensor() = default;
 	tensor(std::vector<i32> shape);
 	static void manual_seed(u32 seed){rand_engine.seed(seed);}
 
 	const std::vector<T>& data()    const	{return _data;}
 	const std::vector<i32>& shape()   const {return _shape;}
-	const std::vector<i32>& strides() const {return _strides;}
+	const std::vector<i64>& strides() const {return _strides;}
 	i64  numel()   const {return _numel; }
 	i32  ndim()    const {return _ndim;}
 
@@ -92,8 +101,8 @@ public:
 	static tensor randn_xavier (std::vector<i32> shape, u32 fan_in, u32 fan_out);
 	static tensor randu_xavier (std::vector<i32> shape, u32 fan_in, u32 fan_out);
 	static tensor eye(const i32 size);
-	static tensor linspace(f32 start, f32 end, i32 num);
-	static tensor arange(f32 start, f32 end, f32 step);
+	static tensor linspace(T start, T end, i32 num);
+	static tensor arange(T start, T end, T step);
 
 	//	inplace math
 	void log_();

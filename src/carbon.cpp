@@ -1,10 +1,12 @@
 #include "carbon.hpp"
 #include "blas.hpp"
 #include <algorithm>
+#include <numeric>
 #include <iomanip>
 #include <ranges>
+#include <functional> 
+#include <stdexcept>
 #include <execution>
-#include <random>
 #include <assert.h>
 
 namespace carbon{
@@ -20,18 +22,19 @@ tensor<T>::tensor(std::vector<i32> shape){
 	_numel = 1; 
 	for(int i : shape) _numel *= i;
 	compute_strides();
-	_data.resize(_numel, 0.0f);
+	_data.resize(_numel, T(0.0));
 }
 
 template<typename T>
 bool tensor<T>::is_contiguous() const{
-	i32 expected_stride = 1;
+	i64 expected_stride = 1;
 	for(i32 i = _ndim-1; i >= 0; i--){
 		if(expected_stride != _strides[i])	return false; 
 		expected_stride *= _shape[i];
 	}
 	return true;
 }
+
 
 
 template<typename T> 
@@ -108,7 +111,7 @@ T& tensor<T>::at(std::vector<i32> idxs){
 
 template <typename T>
 void tensor<T>::compute_strides(){
-	_strides.resize(_ndim, 1);
+	_strides.assign(_ndim, 1);
 	for(int i = _ndim - 2; i >= 0; i--){
 		_strides[i] = _strides[i + 1] * _shape[i + 1];
 	}
@@ -142,7 +145,7 @@ template<typename T>
 tensor<T> tensor<T>::rand_normal (std::vector<i32> shape, f64 mean, f64 std){
 	tensor<T> out(shape);
 	std::normal_distribution<f32> dist(mean, std);
-	std::generate(out._data.begin(), out._data.end(), [&]()->f32{
+	std::generate(out._data.begin(), out._data.end(), [&]()->T{
 			return dist(rand_engine);
 	});
 	return out;
@@ -170,7 +173,7 @@ tensor<T> tensor<T>::randn_he(std::vector<i32> shape, i32 fan_in){
 
 template<typename T> 
 tensor<T> tensor<T>::randu_he(std::vector<i32> shape, i32 fan_in){
-	return tensor::randu(shape, -std::sqrt(2.0f / fan_in), std::sqrt(2.0f / fan_in));
+	return tensor::randu(shape, -std::sqrt(6.0f / fan_in), std::sqrt(6.0f / fan_in));
 }
 
 
@@ -182,7 +185,7 @@ tensor<T> tensor<T>::randn_xavier(std::vector<i32> shape, u32 fan_in, u32 fan_ou
 
 template<typename T> 
 tensor<T> tensor<T>::randu_xavier(std::vector<i32> shape, u32 fan_in, u32 fan_out){
-	return tensor::randu(shape, -std::sqrt(2.0f / (fan_in + fan_out)), std::sqrt(2.0f / (fan_in + fan_out)));
+	return tensor::randu(shape, -std::sqrt(6.0f / (fan_in + fan_out)), std::sqrt(6.0f / (fan_in + fan_out)));
 }
 
 
@@ -200,9 +203,13 @@ tensor<T> tensor<T>::eye(const i32 size){
 
 
 template<typename T> 
-tensor<T> tensor<T>::linspace(f32 start, f32 end, i32 num){
+tensor<T> tensor<T>::linspace(T start, T end, i32 num){
 	tensor<T> out({num});
-	f32 res = (end - start) / (f32)num;
+	if(num == 1){
+		out._data[0] = start;
+		return out;
+	}
+	f32 res = (end - start) / (f32)(num-1);
 	auto indices = std::views::iota(0, num);
 	auto generator = [start, res](i32 i){
 		return static_cast<T>(start + i*res);
@@ -230,8 +237,8 @@ tensor<T> tensor<T>::linspace(f32 start, f32 end, i32 num){
 }
 
 template<typename T> 
-tensor<T> tensor<T>::arange(f32 start, f32 end, f32 step){
-	i32 num = static_cast<i32>(std::ceil((end - start) / step));
+tensor<T> tensor<T>::arange(T start, T end, T step){
+	i32 num = static_cast<f64>(std::ceil((end - start) / f64(step)));
 	if(num <= 0)	return tensor<T>({0});
 	tensor<T> out({num});
 	auto indices = std::views::iota(0, num);
@@ -402,7 +409,7 @@ void tensor<T>::relu_(){
 
 template<typename T>
 void tensor<T>::sigmoid_(){
-	auto generator = [](T val){return (1 / (1 + std::exp(val)));};
+	auto generator = [](T val){return (1 / (1 + std::exp(-val)));};
 	if(_numel >= PARALLEL_THRESHOLD){
 		std::transform(
 			std::execution::par_unseq, 
@@ -497,7 +504,7 @@ void tensor<T>::pow_(const T exponent){
 
 
 template<typename U>
-static inline void print_tensor_recursive(std::ostream& os, const tensor<U>& t, int dim, int offset, int depth){
+static inline void print_tensor_recursive(std::ostream& os, const tensor<U>& t, int dim, i64 offset, int depth){
 	if(dim == t.ndim() - 1){
 		os << "[";
 		for(int i = 0; i < t.shape()[dim]; i++){
@@ -521,6 +528,10 @@ static inline void print_tensor_recursive(std::ostream& os, const tensor<U>& t, 
 }
 template<typename U> 
 std::ostream& operator<<(std::ostream& os, const tensor<U>& t){
+	if(t._ndim == 0){
+		os << "[" << t._data[0] << "]";
+		return os;
+	}
 	print_tensor_recursive(os, t, 0, 0, 0);
 	os << "\n";
 	return os;
@@ -545,71 +556,102 @@ bool tensor<T>::operator!=(const tensor<T>& other) const{
 
 
 template<typename T>
-tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, f32 op) const {
-	// assert(this->_shape == other._shape);
+tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, T op) const {
 	auto outshape = broadcast_shapes(this->_shape, inp2._shape);
 	if(!outshape){
 		throw std::runtime_error("Tensors are not broadcast compatible.");
 	}
 	tensor<T> out(outshape.value());
 
-	//	if both shapes are equal, simply add elementwise.
+	//	(S) + (S)
 	if(this->_shape == inp2._shape){
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
 		blas<T>::axpy(out._numel, op, inp2._data.data(), 1, out._data.data(), 1);
 		return out;
 	}
 
-	// Generalized (..., N) + (N) case
-	if (inp2._ndim == 1 && this->_shape.back() == inp2._shape[0]) {
+	//	(..., N) + (N)
+	if(inp2._ndim == 1 && this->_ndim >= 1 && this->_shape.back() == inp2._shape[0]){
 		i32 N = inp2._shape[0];
-		i32 total_rows = this->_numel / N; 
+		i64 total_rows = this->_numel / N;
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		for (i32 i = 0; i < total_rows; i++) {
-			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + (i*N), 1);
+		for(i64 i = 0; i < total_rows; i++){
+			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + i * N, 1);
 		}
 		return out;
 	}
 
-	//	(....,  K, N) + (K, N)
-	if(this->_ndim > 2 && inp2._ndim == 2){
-		i32 N = inp2._shape[0]*inp2._shape[1];
-		i32 num_iters = std::accumulate(this->_shape.begin(), this->_shape.end() - 2, 1, std::multiplies<i32>()); 
+	//	(..., K, N) + (K, N)  -- inp2 must match this's trailing two dims exactly
+	if(this->_ndim > 2 && inp2._ndim == 2
+	   && inp2._shape[0] == this->_shape[this->_ndim - 2]
+	   && inp2._shape[1] == this->_shape[this->_ndim - 1]){
+		i32 N = static_cast<i32>(inp2._numel);
+		i64 num_iters = this->_numel / N;
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		for(i32 i = 0; i < num_iters; i++){
-			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + (i*N), 1);
-
+		for(i64 i = 0; i < num_iters; i++){
+			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + i * N, 1);
 		}
 		return out;
 	}
 
+	//	scalar
 	if(inp2._numel == 1){
-		float scalar = op * inp2._data[0];
-		for(i64 i = 0; i < _numel; i++)
+		T scalar = op * inp2._data[0];
+		for(i64 i = 0; i < out._numel; i++)
 			out._data[i] = this->_data[i] + scalar;
 		return out;
 	}
 
-	throw std::runtime_error("Broacasting pattern not currently handled by carbon");
+	//	general broadcast fallback
+	const i32 nd = out._ndim;
 
+	//	broadcast strides: real stride where the dim matches, 0 where it's 1 or absent
+	auto broadcast_strides = [nd](const tensor<T>& t){
+		std::vector<i64> s(nd, 0);
+		i32 lead = nd - t._ndim;
+		for(i32 i = 0; i < t._ndim; i++){
+			if(t._shape[i] != 1) s[lead + i] = t._strides[i];
+		}
+		return s;
+	};
+	std::vector<i64> sa = broadcast_strides(*this);
+	std::vector<i64> sb = broadcast_strides(inp2);
+
+	std::vector<i32> coord(nd, 0);
+	i64 oa = 0, ob = 0;
+	for(i64 i = 0; i < out._numel; i++){
+		out._data[i] = this->_data[oa] + op * inp2._data[ob];
+
+		//	odometer increment, carrying from the last dim
+		for(i32 d = nd - 1; d >= 0; d--){
+			coord[d]++;
+			oa += sa[d];
+			ob += sb[d];
+			if(coord[d] < out._shape[d]) break;
+			oa -= sa[d] * out._shape[d];
+			ob -= sb[d] * out._shape[d];
+			coord[d] = 0;
+		}
+	}
+	return out;
 }
 
 
 template<typename T>
 tensor<T> tensor<T>::operator+(const tensor<T>& other) const{
-	return this->arithmetic(other, 1.0f);
+	return this->arithmetic(other, T(1));
 }
 
 template<typename T>
 tensor<T> tensor<T>::operator-(const tensor<T>& other) const{
-	return this->arithmetic(other, -1.0f);
+	return this->arithmetic(other, T(-1));
 }
 
 
 template<typename U>
 tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
+	assert((inp1._ndim == 1) && (inp2._ndim == 1));
 	assert(inp1._shape[inp1._ndim - 1] == inp2._shape[inp2._ndim - 1]);
-
 	i32 N = inp1._shape[0];
 	tensor<U> out({1});
 	U res = blas<U>::dot(N, inp1._data.data(), 1, inp2._data.data(), 1);
@@ -620,6 +662,7 @@ tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
 
 template<typename U>
 tensor<U> gemm(const tensor<U>& inp1, const tensor<U>& inp2){
+	assert((inp1._ndim == 2) && (inp2._ndim == 2));
 	assert(inp1._shape[1] == inp2._shape[0]);
 	i32 M = inp1._shape[0];		// inp1.rows
 	i32 N = inp2._shape[1];		// inp2.col
