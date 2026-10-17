@@ -1,10 +1,17 @@
 #ifndef CARBON_BLAS_HPP
 #define CARBON_BLAS_HPP
-#include <openblas/cblas.h> 
+#ifdef CARBON_USE_BLAS
+#include <cblas.h> 
+#endif
 #include "carbon.hpp"
 
-
 namespace carbon{
+#ifndef CARBON_USE_BLAS 
+enum CBLAS_ORDER {CblasRowMajor = 101, CblasColMajor = 102};
+enum CBLAS_TRANSPOSE {CblasNoTrans = 111, CblasTrans = 112, CblasConjTrans = 113};
+using CBLAS_LAYOUT = CBLAS_ORDER;
+#endif
+
 
 template<typename T>
 struct blas {
@@ -85,6 +92,7 @@ struct blas {
 };
 
 
+#ifdef CARBON_USE_BLAS
 template<>
 struct blas<f32>{
     static void axpy(i32 n, f32 alpha, const f32* x, i32 incx, f32* y, i32 incy){
@@ -158,6 +166,7 @@ struct blas<f64>{
 
 	}
 };
+#endif
 
 
 

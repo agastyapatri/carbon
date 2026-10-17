@@ -1,18 +1,42 @@
 cmake_minimum_required(VERSION 4.0)
 project(carbon VERSION 0.0.1 LANGUAGES CXX)
+
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(BLA_VENDOR OpenBLAS)
-find_package(BLAS REQUIRED)
-set(SOURCES 
-	src/carbon.cpp
-)
+option(CARBON_USE_BLAS "Option for using BLAS for f32 / f64 kernels" ON)
 
+set(SOURCES src/carbon.cpp)
 add_executable(carbon main.cpp ${SOURCES})
 target_include_directories(carbon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(carbon PRIVATE ${BLAS_LIBRARIES})
+
+
+if(CARBON_USE_BLAS)
+	find_package(BLAS)
+	find_path(CBLAS_INCLUDE_DIR cblas.h PATH_SUFFIXES openblas blis)
+	if(BLAS_FOUND AND CBLAS_INCLUDE_DIR)
+		include(CheckCXXSymbolExists)
+		set(CMAKE_REQUIRED_INCLUDES ${CBLAS_INCLUDE_DIR})
+		set(CMAKE_REQUIRED_LIBRARIES ${BLAS_LIBRARIES})
+		check_cxx_symbol_exists(cblas_sgemm cblas.h CARBON_HAVE_BLAS)
+		unset(CMAKE_REQUIRED_INCLUDES)
+		unset(CMAKE_REQUIRED_LIBRARIES)
+	endif()
+	if(CARBON_HAVE_BLAS)
+		message(STATUS "carbon: using CBLAS from ${BLAS_LIBRARIES}")
+		target_compile_definitions(carbon PRIVATE CARBON_USE_BLAS)
+		target_include_directories(carbon PRIVATE ${CBLAS_INCLUDE_DIR})
+		target_link_libraries(carbon PRIVATE BLAS::BLAS)
+	else() 
+		message(WARNING: "carbon: no usable CBLAS found; using generic kernels")
+	endif()
+else()
+	message(STATUS "carbon: BLAS disabled; using generic kernels")
+endif()
+
+
+
 
 
 

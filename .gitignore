@@ -4,5 +4,4 @@ cmake/
 *.out 
 *.o 
 .cache/
-src/carbon_copy.cpp
-src/carbon_copy.hpp
+build_noblas/

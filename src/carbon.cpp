@@ -1,7 +1,7 @@
 #include "carbon.hpp"
 #include "blas.hpp"
 #include <algorithm>
-#include <assert.h>
+#include <cassert>
 #include <concepts>
 #include <execution>
 #include <iomanip>
@@ -168,7 +168,7 @@ template <typename T>
 tensor<T> tensor<T>::randn_he(std::vector<i32> shape, i32 fan_in)
 requires std::floating_point<T>
 {
-	return tensor::rand_normal(shape, 0, std::sqrt(T(6) / fan_in));
+	return tensor::rand_normal(shape, 0, std::sqrt(T(2) / fan_in));
 }
 
 template <typename T>
@@ -176,7 +176,7 @@ tensor<T> tensor<T>::randu_he(std::vector<i32> shape, i32 fan_in)
 requires std::floating_point<T>
 {
 	return tensor::randu(shape, -std::sqrt(T(6) / fan_in),
-					  std::sqrt(6.0f / fan_in));
+					  std::sqrt(T(6) / fan_in));
 }
 
 template <typename T>
@@ -230,7 +230,6 @@ template <typename T> tensor<T> tensor<T>::arange(T start, T end, T step) {
 	for (i64 i = 0; i < out._numel; i++) {
 		out._data[i] = static_cast<T>(f64(start) + i * step);
 	}
-	out._data[num - 1] = end;
 	return out;
 }
 
@@ -464,8 +463,8 @@ tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2) {
 	i32 N = inp2._shape[1]; // inp2.col
 	i32 K = inp1._shape[1]; // inp1.cols
 	tensor<U> out({M, N});
-	blas<U>::gemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
-			   inp1._data.data(), K, inp2._data.data(), N, 0.0f,
+	blas<U>::gemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, U(1),
+			   inp1._data.data(), K, inp2._data.data(), N, U(0),
 			   out._data.data(), N);
 	return out;
 }
@@ -478,8 +477,8 @@ tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2) {
 	i32 M = inp1._shape[0];
 	i32 N = inp1._shape[1];
 	tensor<U> out({M});
-	blas<U>::gemv(CblasRowMajor, CblasNoTrans, M, N, 1.0f, inp1._data.data(), N,
-			   inp2._data.data(), 1, 0.0f, out._data.data(), 1);
+	blas<U>::gemv(CblasRowMajor, CblasNoTrans, M, N, U(1), inp1._data.data(), N,
+			   inp2._data.data(), 1, U(0), out._data.data(), 1);
 
 	return out;
 }
