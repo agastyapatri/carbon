@@ -1,534 +1,338 @@
 #include "carbon.hpp"
 #include "blas.hpp"
 #include <algorithm>
-#include <numeric>
-#include <iomanip>
-#include <ranges>
-#include <functional> 
-#include <stdexcept>
-#include <execution>
 #include <assert.h>
+#include <concepts>
+#include <execution>
+#include <iomanip>
+#include <stdexcept>
 
-namespace carbon{
+namespace carbon {
 
-template<typename T> 
+template <typename T>
 std::mt19937 tensor<T>::rand_engine(std::random_device{}());
 
-
-template<typename T>
-tensor<T>::tensor(std::vector<i32> shape){
+template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 	_shape = shape;
-	_ndim  = shape.size(); 
-	_numel = 1; 
-	for(int i : shape) _numel *= i;
+	_ndim = shape.size();
+	_numel = 1;
+	for (int i : shape)
+	_numel *= i;
 	compute_strides();
 	_data.resize(_numel, T(0.0));
 }
 
-template<typename T>
-bool tensor<T>::is_contiguous() const{
+template <typename T> bool tensor<T>::is_contiguous() const {
 	i64 expected_stride = 1;
-	for(i32 i = _ndim-1; i >= 0; i--){
-		if(expected_stride != _strides[i])	return false; 
+	for (i32 i = _ndim - 1; i >= 0; i--) {
+		if (expected_stride != _strides[i])
+			return false;
 		expected_stride *= _shape[i];
 	}
 	return true;
 }
 
+template <typename T> template <typename F> void tensor<T>::apply_(F f) {
+	if (_numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, _data.begin(), _data.end(),
+				 _data.begin(), f);
+	} else {
+		std::transform(std::execution::unseq, _data.begin(), _data.end(),
+				 _data.begin(), f);
+	}
+}
 
-
-template<typename T> 
-std::optional<std::vector<i32>> tensor<T>::broadcast_shapes(const std::vector<i32>& shape1, const std::vector<i32>& shape2) const{
-	//	the smaller tensor is stretched over the larger; out takes the shape of the larger. 
-	i32 ndim1 = shape1.size(); 
+template <typename T>
+std::optional<std::vector<i32>>
+tensor<T>::broadcast_shapes(const std::vector<i32> &shape1,
+							const std::vector<i32> &shape2) const {
+	//	the smaller tensor is stretched over the larger; out takes the shape of
+	//the larger.
+	i32 ndim1 = shape1.size();
 	i32 ndim2 = shape2.size();
 	i32 out_ndim = std::max(ndim1, ndim2);
 	std::vector<i32> out_shape(out_ndim);
-	for(i32 i = 0; i < out_ndim; i++){
+	for (i32 i = 0; i < out_ndim; i++) {
 		i32 d1 = (i < out_ndim - ndim1) ? 1 : shape1[i - (out_ndim - ndim1)];
 		i32 d2 = (i < out_ndim - ndim2) ? 1 : shape2[i - (out_ndim - ndim2)];
-		if(d1 == d2){
-			out_shape[i] = d1; 
-		} else if(d1 == 1){
-			out_shape[i] = d2;
-		} else if(d2 == 1){
+		if (d1 == d2) {
 			out_shape[i] = d1;
-		} else{
+		} else if (d1 == 1) {
+			out_shape[i] = d2;
+		} else if (d2 == 1) {
+			out_shape[i] = d1;
+		} else {
 			return std::nullopt;
 		}
 	}
 	return out_shape;
 }
 
-template<typename T>
-std::vector<i32> tensor<T>::reduced_shape(i32 axis) const{
+template <typename T>
+std::vector<i32> tensor<T>::reduced_shape(i32 axis) const {
 	std::vector<i32> outshape;
-	for(i32 i = 0; i < this->_ndim; i++){
-		if(i != (i32)axis)
-			outshape.push_back(this->_shape[i]); 
+	for (i32 i = 0; i < this->_ndim; i++) {
+		if (i != (i32)axis)
+			outshape.push_back(this->_shape[i]);
 	}
 	return outshape;
 }
 
-template<typename T>
+template <typename T>
 std::vector<i32> tensor<T>::flat_idx_to_coord(i64 idx) const {
 	std::vector<i32> coords(this->_ndim, 0);
-	for(i32 j = 0; j < this->_ndim; j++){
+	for (i32 j = 0; j < this->_ndim; j++) {
 		coords[j] = idx / this->_strides[j];
-		idx  = idx % this->_strides[j];
+		idx = idx % this->_strides[j];
 	}
 	return coords;
 }
 
-
-
-
-template<typename T>
-i64 tensor<T>::offset(std::vector<i32> idxs) const{
-	i64 offset = 0 ;
-	for(i32 i = 0; i < _ndim; i++){
+template <typename T> i64 tensor<T>::offset(std::span<const i32> idxs) const {
+	i64 offset = 0;
+	for (i32 i = 0; i < _ndim; i++) {
 		assert(idxs[i] >= 0 && idxs[i] < _shape[i]);
 		offset += idxs[i] * _strides[i];
 	}
 	return offset;
 }
 
-
-template<typename T>
-T  tensor<T>::at(std::vector<i32> idxs) const{
-	assert((i32)idxs.size() == _ndim);
+template <typename T> T tensor<T>::at(std::initializer_list<i32> idxs) const {
+	assert(i32(idxs.size()) == _ndim);
 	i64 _offset = offset(idxs);
 	return _data[_offset];
-
 }
 
-template<typename T>
-T& tensor<T>::at(std::vector<i32> idxs){
+template <typename T> T &tensor<T>::at(std::initializer_list<i32> idxs) {
 	assert((i32)idxs.size() == _ndim);
 	i64 _offset = offset(idxs);
 	return _data[_offset];
 }
 
-template <typename T>
-void tensor<T>::compute_strides(){
+template <typename T> void tensor<T>::compute_strides() {
 	_strides.assign(_ndim, 1);
-	for(int i = _ndim - 2; i >= 0; i--){
+	for (int i = _ndim - 2; i >= 0; i--) {
 		_strides[i] = _strides[i + 1] * _shape[i + 1];
 	}
 }
 
-template<typename T>
-void tensor<T>::fill(T value){
-	if(_numel >= PARALLEL_THRESHOLD){
+template <typename T> void tensor<T>::fill(T value) {
+	if (_numel >= PARALLEL_THRESHOLD) {
 		std::fill(std::execution::par_unseq, _data.begin(), _data.end(), value);
-	}else{
+	} else {
 		std::fill(std::execution::unseq, _data.begin(), _data.end(), value);
-
 	}
 }
 
-template<typename T>
-tensor<T> tensor<T>::zeros(std::vector<i32> shape){
+template <typename T> tensor<T> tensor<T>::zeros(std::vector<i32> shape) {
 	tensor<T> out(shape);
 	return out;
 }
 
-
-template<typename T>
-tensor<T> tensor<T>::ones(std::vector<i32> shape){
+template <typename T> tensor<T> tensor<T>::ones(std::vector<i32> shape) {
 	tensor<T> out(shape);
 	out.fill(1);
 	return out;
 }
 
-template<typename T> 
-tensor<T> tensor<T>::rand_normal (std::vector<i32> shape, f64 mean, f64 std){
+template <typename T>
+tensor<T> tensor<T>::rand_normal(std::vector<i32> shape, T mean, T std)
+requires std::floating_point<T>
+{
 	tensor<T> out(shape);
-	std::normal_distribution<f32> dist(mean, std);
-	std::generate(out._data.begin(), out._data.end(), [&]()->T{
-			return dist(rand_engine);
-	});
+	std::normal_distribution<T> dist(mean, std);
+	std::generate(out._data.begin(), out._data.end(),
+			   [&]() -> T { return dist(rand_engine); });
 	return out;
 }
 
-template<typename T> 
-tensor<T> tensor<T>::randn(std::vector<i32> shape){
+template <typename T>
+tensor<T> tensor<T>::randn(std::vector<i32> shape)
+requires std::floating_point<T>
+{
 	return tensor<T>::rand_normal(shape, 0, 1);
 }
 
-template<typename T> 
-tensor<T> tensor<T>::randu(std::vector<i32> shape, f32 low, f32 high){
+template <typename T>
+tensor<T> tensor<T>::randu(std::vector<i32> shape, T low, T high)
+requires std::floating_point<T>
+{
 	tensor out(shape);
-	std::uniform_real_distribution<f32> dist(low, high);
-	std::generate(out._data.begin(), out._data.end(), [&]()->f32{
-			return dist(rand_engine);
-	});
+	std::uniform_real_distribution<T> dist(low, high);
+	std::generate(out._data.begin(), out._data.end(),
+			   [&]() -> T { return dist(rand_engine); });
 	return out;
 }
 
-template<typename T> 
-tensor<T> tensor<T>::randn_he(std::vector<i32> shape, i32 fan_in){
-	return tensor::rand_normal(shape, 0, std::sqrt(2.0f / fan_in));
+template <typename T>
+tensor<T> tensor<T>::randn_he(std::vector<i32> shape, i32 fan_in)
+requires std::floating_point<T>
+{
+	return tensor::rand_normal(shape, 0, std::sqrt(T(6) / fan_in));
 }
 
-template<typename T> 
-tensor<T> tensor<T>::randu_he(std::vector<i32> shape, i32 fan_in){
-	return tensor::randu(shape, -std::sqrt(6.0f / fan_in), std::sqrt(6.0f / fan_in));
+template <typename T>
+tensor<T> tensor<T>::randu_he(std::vector<i32> shape, i32 fan_in)
+requires std::floating_point<T>
+{
+	return tensor::randu(shape, -std::sqrt(T(6) / fan_in),
+					  std::sqrt(6.0f / fan_in));
 }
 
-
-
-template<typename T> 
-tensor<T> tensor<T>::randn_xavier(std::vector<i32> shape, u32 fan_in, u32 fan_out){
-	return tensor::rand_normal(shape, 0, std::sqrt(2.0f / (fan_in + fan_out)));
+template <typename T>
+tensor<T> tensor<T>::randn_xavier(std::vector<i32> shape, u32 fan_in,
+								  u32 fan_out)
+requires std::floating_point<T>
+{
+	return tensor::rand_normal(shape, 0, std::sqrt(T(2) / (fan_in + fan_out)));
 }
 
-template<typename T> 
-tensor<T> tensor<T>::randu_xavier(std::vector<i32> shape, u32 fan_in, u32 fan_out){
-	return tensor::randu(shape, -std::sqrt(6.0f / (fan_in + fan_out)), std::sqrt(6.0f / (fan_in + fan_out)));
+template <typename T>
+tensor<T> tensor<T>::randu_xavier(std::vector<i32> shape, u32 fan_in,
+								  u32 fan_out)
+requires std::floating_point<T>
+{
+	return tensor::randu(shape, -std::sqrt(T(6) / (fan_in + fan_out)),
+					  std::sqrt(T(6) / (fan_in + fan_out)));
 }
 
-
-
-
-template<typename T> 
-tensor<T> tensor<T>::eye(const i32 size){
+template <typename T> tensor<T> tensor<T>::eye(const i32 size) {
 	tensor out({size, size});
-	for(i32 i = 0; i < size; i++){
+	for (i32 i = 0; i < size; i++) {
 		out.at({i, i}) = 1;
 	}
 	return out;
 }
 
-
-
-template<typename T> 
-tensor<T> tensor<T>::linspace(T start, T end, i32 num){
+template <typename T> tensor<T> tensor<T>::linspace(T start, T end, i32 num) {
+	assert(num >= 0);
 	tensor<T> out({num});
-	if(num == 1){
+	if (num == 0)
+		return out;
+	if (num == 1) {
 		out._data[0] = start;
 		return out;
 	}
-	f32 res = (end - start) / (f32)(num-1);
-	auto indices = std::views::iota(0, num);
-	auto generator = [start, res](i32 i){
-		return static_cast<T>(start + i*res);
-	};
-
-	if(num >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq,
-			indices.begin(),
-			indices.end(), 
-			out._data.begin(),
-			generator
-		);
-	}else{
-		std::transform(
-			std::execution::unseq,
-			indices.begin(),
-			indices.end(), 
-			out._data.begin(),
-			generator
-		);
-
+	f64 res = (f64(end) - f64(start)) / f64((num - 1));
+	for (i64 i = 0; i < out._numel; i++) {
+		out._data[i] = static_cast<T>(f64(start) + i * res);
 	}
+	out._data[num - 1] = end;
 	return out;
 }
 
-template<typename T> 
-tensor<T> tensor<T>::arange(T start, T end, T step){
-	i32 num = static_cast<f64>(std::ceil((end - start) / f64(step)));
-	if(num <= 0)	return tensor<T>({0});
-	tensor<T> out({num});
-	auto indices = std::views::iota(0, num);
-	auto generator = [start, step](i32 i){
-		return static_cast<T>(start + i*step);
-	};
-	if(num >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			indices.begin(), 
-			indices.end(), 
-			out._data.begin(), 
-			generator
-		);
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			indices.begin(), 
-			indices.end(), 
-			out._data.begin(), 
-			generator
-		);
+template <typename T> tensor<T> tensor<T>::arange(T start, T end, T step) {
+	assert(step > 0);
+	i64 num = static_cast<i64>(std::ceil((end - start) / f64(step)));
+	if (num <= 0)
+		return tensor<T>({0});
+	tensor<T> out({static_cast<i32>(num)});
+	for (i64 i = 0; i < out._numel; i++) {
+		out._data[i] = static_cast<T>(f64(start) + i * step);
 	}
+	out._data[num - 1] = end;
 	return out;
-
 }
 
-
-template<typename T>
-void tensor<T>::log_(){
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::log(val));}
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::log(val));}
-		); 
-
-	}
-
+template <typename T>
+void tensor<T>::log_()
+requires std::floating_point<T>
+{
+	apply_([](T val) { return static_cast<T>(std::log(val)); });
 }
 
-template<typename T>
-void tensor<T>::exp_(){
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::exp(val));}
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::exp(val));}
-		); 
-
-	}
-
-
+template <typename T>
+void tensor<T>::exp_()
+requires std::floating_point<T>
+{
+	apply_([](T val) { return static_cast<T>(std::exp(val)); });
 }
 
-template<typename T>
-void tensor<T>::sin_(){
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::sin(val));}
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::sin(val));}
-		); 
-
-	}
+template <typename T>
+void tensor<T>::sin_()
+requires std::floating_point<T>
+{
+	apply_([](T val) { return static_cast<T>(std::sin(val)); });
 }
 
-template<typename T>
-void tensor<T>::cos_(){
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::cos(val));}
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			[](T val){return static_cast<T>(std::cos(val));}
-		); 
-
-	}
+template <typename T>
+void tensor<T>::cos_()
+requires std::floating_point<T>
+{
+	apply_([](T val) { return static_cast<T>(std::cos(val)); });
 }
 
-template<typename T>
-void tensor<T>::tanh_(){
-	auto generator = [](T val){return static_cast<T>(std::tanh(val));};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T>
+void tensor<T>::tanh_()
+requires std::floating_point<T>
+{
+	auto generator = [](T val) { return static_cast<T>(std::tanh(val)); };
+	apply_(generator);
 }
 
-
-
-template<typename T>
-void tensor<T>::relu_(){
-	auto generator = [](T val){return (val > 0 ? val : 0);};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T> void tensor<T>::relu_() {
+	auto generator = [](T val) { return (val > 0 ? val : 0); };
+	apply_(generator);
 }
 
-
-template<typename T>
-void tensor<T>::sigmoid_(){
-	auto generator = [](T val){return (1 / (1 + std::exp(-val)));};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T>
+void tensor<T>::sigmoid_()
+requires std::floating_point<T>
+{
+	auto generator = [](T val) { return (1 / (1 + std::exp(-val))); };
+	apply_(generator);
 }
 
-template<typename T>
-void tensor<T>::square_(){
-	auto generator = [](T val){return val*val;};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T> void tensor<T>::square_() {
+	auto generator = [](T val) { return val * val; };
+	apply_(generator);
 }
 //
-template<typename T>
-void tensor<T>::cube_(){
-	auto generator = [](T val){return val*val*val;};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T> void tensor<T>::cube_() {
+	auto generator = [](T val) { return val * val * val; };
+	apply_(generator);
 }
 
-
-template<typename T>
-void tensor<T>::pow_(const T exponent){
-	auto generator = [exponent](T val){return std::pow(val, exponent);};
-	if(_numel >= PARALLEL_THRESHOLD){
-		std::transform(
-			std::execution::par_unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-	}else{
-		std::transform(
-			std::execution::unseq, 
-			_data.begin(), 
-			_data.end(), 
-			_data.begin(),
-			generator
-		); 
-
-	}
+template <typename T>
+void tensor<T>::pow_(const T exponent)
+requires std::floating_point<T>
+{
+	auto generator = [exponent](T val) { return std::pow(val, exponent); };
+	apply_(generator);
 }
 
-
-
-
-template<typename U>
-static inline void print_tensor_recursive(std::ostream& os, const tensor<U>& t, int dim, i64 offset, int depth){
-	if(dim == t.ndim() - 1){
+template <typename U>
+static inline void print_tensor_recursive(std::ostream &os, const tensor<U> &t,
+										  int dim, i64 offset, int depth) {
+	if (dim == t.ndim() - 1) {
 		os << "[";
-		for(int i = 0; i < t.shape()[dim]; i++){
-			os << std::setw(10) << std::fixed << std::setprecision(7) << t.data()[offset + i * t.strides()[dim]];
-			if(i < t.shape()[dim] - 1) os << ", ";
+		for (int i = 0; i < t.shape()[dim]; i++) {
+			os << std::setw(10) << std::fixed << std::setprecision(7)
+				<< t.data()[offset + i * t.strides()[dim]];
+			if (i < t.shape()[dim] - 1)
+				os << ", ";
 		}
 		os << "]";
 	} else {
 		os << "[";
-		for(int i = 0; i < t.shape()[dim]; i++){
-			print_tensor_recursive(os, t, dim+1, offset + i*t.strides()[dim], depth + 1);
-		if(i < t.shape()[dim] - 1){
+		for (int i = 0; i < t.shape()[dim]; i++) {
+			print_tensor_recursive(os, t, dim + 1, offset + i * t.strides()[dim],
+						  depth + 1);
+			if (i < t.shape()[dim] - 1) {
 				os << ",";
 				int newlines = t.ndim() - 1 - dim;
-				for(int n = 0; n < newlines; n++) os << "\n";
-				for(int d = 0; d < depth + 1; d++) os << " ";
+				for (int n = 0; n < newlines; n++)
+					os << "\n";
+				for (int d = 0; d < depth + 1; d++)
+					os << " ";
 			}
 		}
 		os << "]";
 	}
 }
-template<typename U> 
-std::ostream& operator<<(std::ostream& os, const tensor<U>& t){
-	if(t._ndim == 0){
+template <typename U>
+std::ostream &operator<<(std::ostream &os, const tensor<U> &t) {
+	if (t._ndim == 0) {
 		os << "[" << t._data[0] << "]";
 		return os;
 	}
@@ -537,67 +341,59 @@ std::ostream& operator<<(std::ostream& os, const tensor<U>& t){
 	return os;
 }
 
-template<typename T>
-bool tensor<T>::operator==(const tensor<T>& other) const{
-	if(_shape != other._shape) return false; 
-	for(i64 i = 0; i < _numel; i++){
-		if(this->_data[i] != other._data[i])
-			return false;
-	}
-	return true; 
-
+template <typename T> bool tensor<T>::operator==(const tensor<T> &other) const {
+	return ((_shape == other._shape) && (std::equal(begin(), end(), other.begin())));
 }
 
-template<typename T> 
-bool tensor<T>::operator!=(const tensor<T>& other) const{
+template <typename T> bool tensor<T>::operator!=(const tensor<T> &other) const {
 	return !(*(this) == other);
 }
 
-
-
-template<typename T>
-tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, T op) const {
+template <typename T>
+tensor<T> tensor<T>::arithmetic(const tensor<T> &inp2, T op) const {
 	auto outshape = broadcast_shapes(this->_shape, inp2._shape);
-	if(!outshape){
+	if (!outshape) {
 		throw std::runtime_error("Tensors are not broadcast compatible.");
 	}
 	tensor<T> out(outshape.value());
 
 	//	(S) + (S)
-	if(this->_shape == inp2._shape){
+	if (this->_shape == inp2._shape) {
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
 		blas<T>::axpy(out._numel, op, inp2._data.data(), 1, out._data.data(), 1);
 		return out;
 	}
 
 	//	(..., N) + (N)
-	if(inp2._ndim == 1 && this->_ndim >= 1 && this->_shape.back() == inp2._shape[0]){
+	if (inp2._ndim == 1 && this->_ndim >= 1 &&
+		this->_shape.back() == inp2._shape[0]) {
 		i32 N = inp2._shape[0];
 		i64 total_rows = this->_numel / N;
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		for(i64 i = 0; i < total_rows; i++){
+		for (i64 i = 0; i < total_rows; i++) {
 			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + i * N, 1);
 		}
 		return out;
 	}
 
-	//	(..., K, N) + (K, N)  -- inp2 must match this's trailing two dims exactly
-	if(this->_ndim > 2 && inp2._ndim == 2
-	   && inp2._shape[0] == this->_shape[this->_ndim - 2]
-	   && inp2._shape[1] == this->_shape[this->_ndim - 1]){
+	//	(..., K, N) + (K, N)  -- inp2 must match this's trailing two dims
+	//exactly
+	if (this->_ndim > 2 && inp2._ndim == 2 &&
+		inp2._shape[0] == this->_shape[this->_ndim - 2] &&
+		inp2._shape[1] == this->_shape[this->_ndim - 1]) {
 		i32 N = static_cast<i32>(inp2._numel);
 		i64 num_iters = this->_numel / N;
 		std::copy(this->_data.begin(), this->_data.end(), out._data.begin());
-		for(i64 i = 0; i < num_iters; i++){
+		for (i64 i = 0; i < num_iters; i++) {
 			blas<T>::axpy(N, op, inp2._data.data(), 1, out._data.data() + i * N, 1);
 		}
 		return out;
 	}
 
 	//	scalar
-	if(inp2._numel == 1){
+	if (inp2._numel == 1) {
 		T scalar = op * inp2._data[0];
-		for(i64 i = 0; i < out._numel; i++)
+		for (i64 i = 0; i < out._numel; i++)
 			out._data[i] = this->_data[i] + scalar;
 		return out;
 	}
@@ -605,12 +401,14 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, T op) const {
 	//	general broadcast fallback
 	const i32 nd = out._ndim;
 
-	//	broadcast strides: real stride where the dim matches, 0 where it's 1 or absent
-	auto broadcast_strides = [nd](const tensor<T>& t){
+	//	broadcast strides: real stride where the dim matches, 0 where it's 1 or
+	//absent
+	auto broadcast_strides = [nd](const tensor<T> &t) {
 		std::vector<i64> s(nd, 0);
 		i32 lead = nd - t._ndim;
-		for(i32 i = 0; i < t._ndim; i++){
-			if(t._shape[i] != 1) s[lead + i] = t._strides[i];
+		for (i32 i = 0; i < t._ndim; i++) {
+			if (t._shape[i] != 1)
+				s[lead + i] = t._strides[i];
 		}
 		return s;
 	};
@@ -619,15 +417,16 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, T op) const {
 
 	std::vector<i32> coord(nd, 0);
 	i64 oa = 0, ob = 0;
-	for(i64 i = 0; i < out._numel; i++){
+	for (i64 i = 0; i < out._numel; i++) {
 		out._data[i] = this->_data[oa] + op * inp2._data[ob];
 
 		//	odometer increment, carrying from the last dim
-		for(i32 d = nd - 1; d >= 0; d--){
+		for (i32 d = nd - 1; d >= 0; d--) {
 			coord[d]++;
 			oa += sa[d];
 			ob += sb[d];
-			if(coord[d] < out._shape[d]) break;
+			if (coord[d] < out._shape[d])
+				break;
 			oa -= sa[d] * out._shape[d];
 			ob -= sb[d] * out._shape[d];
 			coord[d] = 0;
@@ -636,20 +435,18 @@ tensor<T> tensor<T>::arithmetic(const tensor<T>& inp2, T op) const {
 	return out;
 }
 
-
-template<typename T>
-tensor<T> tensor<T>::operator+(const tensor<T>& other) const{
+template <typename T>
+tensor<T> tensor<T>::operator+(const tensor<T> &other) const {
 	return this->arithmetic(other, T(1));
 }
 
-template<typename T>
-tensor<T> tensor<T>::operator-(const tensor<T>& other) const{
+template <typename T>
+tensor<T> tensor<T>::operator-(const tensor<T> &other) const {
 	return this->arithmetic(other, T(-1));
 }
 
-
-template<typename U>
-tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
+template <typename U>
+tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2) {
 	assert((inp1._ndim == 1) && (inp2._ndim == 1));
 	assert(inp1._shape[inp1._ndim - 1] == inp2._shape[inp2._ndim - 1]);
 	i32 N = inp1._shape[0];
@@ -657,117 +454,58 @@ tensor<U> dot(const tensor<U>& inp1, const tensor<U>& inp2){
 	U res = blas<U>::dot(N, inp1._data.data(), 1, inp2._data.data(), 1);
 	out._data[0] = res;
 	return out;
-
 }
 
-template<typename U>
-tensor<U> gemm(const tensor<U>& inp1, const tensor<U>& inp2){
+template <typename U>
+tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2) {
 	assert((inp1._ndim == 2) && (inp2._ndim == 2));
 	assert(inp1._shape[1] == inp2._shape[0]);
-	i32 M = inp1._shape[0];		// inp1.rows
-	i32 N = inp2._shape[1];		// inp2.col
-	i32 K = inp1._shape[1];		// inp1.cols
+	i32 M = inp1._shape[0]; // inp1.rows
+	i32 N = inp2._shape[1]; // inp2.col
+	i32 K = inp1._shape[1]; // inp1.cols
 	tensor<U> out({M, N});
-	blas<U>::gemm(
-		CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-		M, N, K, 
-		1.0f, 
-		inp1._data.data(), K, 
-		inp2._data.data(), N,
-		0.0f, 
-		out._data.data(), N
-	);
+	blas<U>::gemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, M, N, K, 1.0f,
+			   inp1._data.data(), K, inp2._data.data(), N, 0.0f,
+			   out._data.data(), N);
 	return out;
 }
 
-
-
-
-
-
-template<typename U>
-tensor<U> gemv(const tensor<U>& inp1, const tensor<U>& inp2){
+template <typename U>
+tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2) {
 	assert(inp1._ndim == 2);
 	assert(inp2._ndim == 1);
 	assert(inp1._shape[1] == inp2._shape[0]);
 	i32 M = inp1._shape[0];
 	i32 N = inp1._shape[1];
 	tensor<U> out({M});
-	blas<U>::gemv(
-		CblasRowMajor, CblasNoTrans, 
-		M, N, 
-		1.0f, 
-		inp1._data.data(), N, 
-		inp2._data.data(), 1,
-		0.0f, 
-		out._data.data(),
-		1
-	);
-	
+	blas<U>::gemv(CblasRowMajor, CblasNoTrans, M, N, 1.0f, inp1._data.data(), N,
+			   inp2._data.data(), 1, 0.0f, out._data.data(), 1);
 
 	return out;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 //	explicit instantation, apparently
 template class tensor<f32>;
 template class tensor<f64>;
 template class tensor<i32>;
 template class tensor<i64>;
-template std::ostream& operator<<(std::ostream& os, const tensor<f32>& t);
-template std::ostream& operator<<(std::ostream& os, const tensor<f64>& t);
-template std::ostream& operator<<(std::ostream& os, const tensor<i32>& t);
-template std::ostream& operator<<(std::ostream& os, const tensor<i64>& t);
+template std::ostream &operator<<(std::ostream &os, const tensor<f32> &t);
+template std::ostream &operator<<(std::ostream &os, const tensor<f64> &t);
+template std::ostream &operator<<(std::ostream &os, const tensor<i32> &t);
+template std::ostream &operator<<(std::ostream &os, const tensor<i64> &t);
 
-template tensor<f32> dot(const tensor<f32>& inp1, const tensor<f32>& inp2);
-template tensor<f64> dot(const tensor<f64>& inp1, const tensor<f64>& inp2);
-template tensor<i32> dot(const tensor<i32>& inp1, const tensor<i32>& inp2);
-template tensor<i64> dot(const tensor<i64>& inp1, const tensor<i64>& inp2);
+template tensor<f32> dot(const tensor<f32> &inp1, const tensor<f32> &inp2);
+template tensor<f64> dot(const tensor<f64> &inp1, const tensor<f64> &inp2);
+template tensor<i32> dot(const tensor<i32> &inp1, const tensor<i32> &inp2);
+template tensor<i64> dot(const tensor<i64> &inp1, const tensor<i64> &inp2);
 
-template tensor<f32> gemm(const tensor<f32>& inp1, const tensor<f32>& inp2);
-template tensor<f64> gemm(const tensor<f64>& inp1, const tensor<f64>& inp2);
-template tensor<i32> gemm(const tensor<i32>& inp1, const tensor<i32>& inp2);
-template tensor<i64> gemm(const tensor<i64>& inp1, const tensor<i64>& inp2);
+template tensor<f32> gemm(const tensor<f32> &inp1, const tensor<f32> &inp2);
+template tensor<f64> gemm(const tensor<f64> &inp1, const tensor<f64> &inp2);
+template tensor<i32> gemm(const tensor<i32> &inp1, const tensor<i32> &inp2);
+template tensor<i64> gemm(const tensor<i64> &inp1, const tensor<i64> &inp2);
 
-template tensor<f32> gemv(const tensor<f32>& inp1, const tensor<f32>& inp2);
-template tensor<f64> gemv(const tensor<f64>& inp1, const tensor<f64>& inp2);
-template tensor<i32> gemv(const tensor<i32>& inp1, const tensor<i32>& inp2);
-template tensor<i64> gemv(const tensor<i64>& inp1, const tensor<i64>& inp2);
-}
-
-
-
-
-
-
-
-
+template tensor<f32> gemv(const tensor<f32> &inp1, const tensor<f32> &inp2);
+template tensor<f64> gemv(const tensor<f64> &inp1, const tensor<f64> &inp2);
+template tensor<i32> gemv(const tensor<i32> &inp1, const tensor<i32> &inp2);
+template tensor<i64> gemv(const tensor<i64> &inp1, const tensor<i64> &inp2);
+} // namespace carbon

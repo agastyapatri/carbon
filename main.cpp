@@ -1,16 +1,17 @@
 #include "carbon.hpp"
+#include <cstdlib>
 #include <iostream> 
-#define type carbon::f32
+#include <numbers>
+#define type carbon::f64
 #define LEN 1000
+using tensor = carbon::tensor<type>;
 
 
 int main(){
-	// carbon::tensor<type>::manual_seed(0);
-	carbon::tensor<type> a = carbon::tensor<type>::randn({LEN, LEN});
-	carbon::tensor<type> b = carbon::tensor<type>::randn({LEN});
-	carbon::tensor<type> c = a + b;
-	std::cout << c.shape()[0] << ", " << c.shape()[1] << std::endl;
-	return 0;
+	// tensor::manual_seed(0);
+	tensor a = tensor::randn({100, 100, 100});
+	tensor b = tensor::randn({100, 100, 100});
+	std::cout << (a == b) << std::endl;
 
 }
 
