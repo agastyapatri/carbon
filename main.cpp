@@ -4,16 +4,20 @@
 #include <numbers>
 #include <chrono> 
 #define type carbon::f64
-#define LEN 100
+#define LEN 1000
 using tensor = carbon::tensor<type>;
 
 
 int main(){
 	carbon::manual_seed(0);
-	carbon::tensor<carbon::f32> a = carbon::tensor<carbon::f32>::randn({10});
-	carbon::tensor<carbon::f64> b = carbon::tensor<carbon::f64>::randn({10});
-	std::cout << a << "\n\n";
-	std::cout << b << "\n\n";
+	carbon::tensor<double> a = carbon::tensor<double>::randn({LEN, LEN});
+	carbon::tensor<double> b = carbon::tensor<double>::randn({LEN, LEN});
+	auto start = std::chrono::high_resolution_clock::now();
+	carbon::tensor<double> c = a / b;
+	auto end = std::chrono::high_resolution_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+	std::cout << c << std::endl;
+
 
 	return 0;
 }

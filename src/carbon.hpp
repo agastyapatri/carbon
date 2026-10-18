@@ -131,14 +131,17 @@ public:
 	bool operator!=(const tensor<T> &other) const;
 	tensor operator+(const tensor &other) const;
 	tensor operator-(const tensor &other) const;
-	// tensor operator*(const tensor& other) const;
-	// tensor operator/(const tensor& other) const;
+	tensor operator*(const tensor& other) const;
+
+
+	//	TODO: iron out all the edge cases
+	tensor operator/(const tensor& other) const;
 
 	// TENSOR - SCALAR MATH
-	// tensor operator*(f32 scalar) const;
-	// tensor operator/(f32 scalar) const;
-	// tensor operator+(f32 scalar) const;
-	// tensor operator-(f32 scalar) const;
+	tensor operator*(f32 scalar) const;
+	tensor operator/(f32 scalar) const;
+	tensor operator+(f32 scalar) const;
+	tensor operator-(f32 scalar) const;
 
 	template <typename U>
 	friend tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);

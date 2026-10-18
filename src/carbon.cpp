@@ -464,6 +464,220 @@ tensor<T> tensor<T>::operator-(const tensor<T> &other) const {
 	return this->arithmetic(other, T(-1));
 }
 
+template<typename T>
+tensor<T> tensor<T>::operator*(const tensor& other) const{
+	auto outshape = broadcast_shapes(this->_shape, other._shape);
+	if (!outshape) {
+		throw std::runtime_error("Tensors are not broadcast compatible.");
+	}
+	tensor<T> out(outshape.value());
+	if(out._numel == 0)	return out;
+	auto gen = [](T x, T y){return x * y;};
+
+	//	(S) * (S)
+	if (this->_shape == other._shape) {
+		if (_numel >= PARALLEL_THRESHOLD) {
+			std::transform(std::execution::par_unseq, _data.begin(), _data.end(), other._data.begin(), out._data.begin(), gen);
+		} else {
+			std::transform(std::execution::unseq, _data.begin(), _data.end(), other._data.begin(), out._data.begin(), gen);
+		}
+
+		return out;
+	}
+
+	//	(..., N) * (N)
+	if (other._ndim == 1 && this->_ndim >= 1 &&
+		this->_shape.back() == other._shape[0]) {
+		i32 N = other._shape[0];
+		i64 total_rows = this->_numel / N;
+		for (i64 i = 0; i < total_rows; i++) {
+			auto a_row = _data.begin() + i*N;
+			std::transform(std::execution::unseq, a_row, a_row + N, other._data.begin(), out._data.begin() + i*N, gen);
+		}
+		return out;
+	}
+
+	//	(..., K, N) * (K, N)  -- other must match this's trailing two dims
+	//exactly
+	if (this->_ndim > 2 && other._ndim == 2 &&
+		other._shape[0] == this->_shape[this->_ndim - 2] &&
+		other._shape[1] == this->_shape[this->_ndim - 1]) {
+		i32 N = static_cast<i32>(other._numel);
+		i64 num_iters = this->_numel / N;
+		for (i64 i = 0; i < num_iters; i++) {
+			auto a_block = _data.begin() + i*N;
+			std::transform(std::execution::unseq, a_block, a_block + N, other._data.begin(), out._data.begin() + i*N, gen);
+		}
+		return out;
+	}
+
+	//	scalar
+	if (other._numel == 1) {
+		T scalar = other._data[0];
+		for (i64 i = 0; i < out._numel; i++)
+			out._data[i] = this->_data[i] * scalar;
+		return out;
+	}
+
+	//	general broadcast fallback
+	const i32 nd = out._ndim;
+
+	//	broadcast strides: real stride where the dim matches, 0 where it's 1 or
+	//absent
+	auto broadcast_strides = [nd](const tensor<T> &t) {
+		std::vector<i64> s(nd, 0);
+		i32 lead = nd - t._ndim;
+		for (i32 i = 0; i < t._ndim; i++) {
+			if (t._shape[i] != 1)
+				s[lead + i] = t._strides[i];
+		}
+		return s;
+	};
+	std::vector<i64> sa = broadcast_strides(*this);
+	std::vector<i64> sb = broadcast_strides(other);
+
+	std::vector<i32> coord(nd, 0);
+	i64 oa = 0, ob = 0;
+	for (i64 i = 0; i < out._numel; i++) {
+		out._data[i] = this->_data[oa] * other._data[ob];
+
+		//	odometer increment, carrying from the last dim
+		for (i32 d = nd - 1; d >= 0; d--) {
+			coord[d]++;
+			oa += sa[d];
+			ob += sb[d];
+			if (coord[d] < out._shape[d])
+				break;
+			oa -= sa[d] * out._shape[d];
+			ob -= sb[d] * out._shape[d];
+			coord[d] = 0;
+		}
+	}
+	return out;
+}
+
+template<typename T>
+tensor<T> tensor<T>::operator/(const tensor& other) const{
+	auto outshape = broadcast_shapes(this->_shape, other._shape);
+	if (!outshape) {
+		throw std::runtime_error("Tensors are not broadcast compatible.");
+	}
+	tensor<T> out(outshape.value());
+	if(out._numel == 0)	return out;
+
+	auto gen = [](T x, T y){return x / y;};
+	//	(S) * (S)
+	if (this->_shape == other._shape) {
+		if (_numel >= PARALLEL_THRESHOLD) {
+			std::transform(std::execution::par_unseq, _data.begin(), _data.end(), other._data.begin(), out._data.begin(), gen);
+		} else {
+			std::transform(std::execution::unseq, _data.begin(), _data.end(), other._data.begin(), out._data.begin(), gen);
+		}
+
+		return out;
+	}
+
+	//	(..., N) * (N)
+	if (other._ndim == 1 && this->_ndim >= 1 &&
+		this->_shape.back() == other._shape[0]) {
+		i32 N = other._shape[0];
+		i64 total_rows = this->_numel / N;
+		for (i64 i = 0; i < total_rows; i++) {
+			auto a_row = _data.begin() + i*N;
+			std::transform(std::execution::unseq, a_row, a_row + N, other._data.begin(), out._data.begin() + i*N, gen);
+		}
+		return out;
+	}
+
+	//	(..., K, N) * (K, N)  -- other must match this's trailing two dims
+	//exactly
+	if (this->_ndim > 2 && other._ndim == 2 &&
+		other._shape[0] == this->_shape[this->_ndim - 2] &&
+		other._shape[1] == this->_shape[this->_ndim - 1]) {
+		i32 N = static_cast<i32>(other._numel);
+		i64 num_iters = this->_numel / N;
+		for (i64 i = 0; i < num_iters; i++) {
+			auto a_block = _data.begin() + i*N;
+			std::transform(std::execution::unseq, a_block, a_block + N, other._data.begin(), out._data.begin() + i*N, gen);
+		}
+		return out;
+	}
+
+	//	scalar
+	if (other._numel == 1) {
+		T scalar = other._data[0];
+		for (i64 i = 0; i < out._numel; i++)
+			out._data[i] = this->_data[i] / scalar;
+		return out;
+	}
+
+	//	general broadcast fallback
+	const i32 nd = out._ndim;
+
+	//	broadcast strides: real stride where the dim matches, 0 where it's 1 or
+	//absent
+	auto broadcast_strides = [nd](const tensor<T> &t) {
+		std::vector<i64> s(nd, 0);
+		i32 lead = nd - t._ndim;
+		for (i32 i = 0; i < t._ndim; i++) {
+			if (t._shape[i] != 1)
+				s[lead + i] = t._strides[i];
+		}
+		return s;
+	};
+	std::vector<i64> sa = broadcast_strides(*this);
+	std::vector<i64> sb = broadcast_strides(other);
+
+	std::vector<i32> coord(nd, 0);
+	i64 oa = 0, ob = 0;
+	for (i64 i = 0; i < out._numel; i++) {
+		out._data[i] = this->_data[oa] / other._data[ob];
+
+		//	odometer increment, carrying from the last dim
+		for (i32 d = nd - 1; d >= 0; d--) {
+			coord[d]++;
+			oa += sa[d];
+			ob += sb[d];
+			if (coord[d] < out._shape[d])
+				break;
+			oa -= sa[d] * out._shape[d];
+			ob -= sb[d] * out._shape[d];
+			coord[d] = 0;
+		}
+	}
+	return out;
+}
+
+
+template<typename T> tensor<T> tensor<T>::operator+(f32 scalar) const{
+	tensor<T> out(_shape);
+	for (i64 i = 0; i < out._numel; i++)
+		out._data[i] = this->_data[i] + scalar;
+	return out;
+}
+template<typename T> tensor<T> tensor<T>::operator-(f32 scalar) const{
+	tensor<T> out(_shape);
+	for (i64 i = 0; i < out._numel; i++)
+		out._data[i] = this->_data[i] - scalar;
+	return out;
+
+}
+template<typename T> tensor<T> tensor<T>::operator*(f32 scalar) const{
+	tensor<T> out(_shape);
+	for (i64 i = 0; i < out._numel; i++)
+		out._data[i] = this->_data[i] * scalar;
+	return out;
+
+}
+template<typename T> tensor<T> tensor<T>::operator/(f32 scalar) const{
+	tensor<T> out(_shape);
+	for (i64 i = 0; i < out._numel; i++)
+		out._data[i] = this->_data[i] / scalar;
+	return out;
+
+}
+
+
 template <typename U>
 tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2) {
 	assert((inp1._ndim == 1) && (inp2._ndim == 1));

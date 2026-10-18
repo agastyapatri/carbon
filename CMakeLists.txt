@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 4.0)
+set(CMAKE_CXX_COMPILER_NAMES clang++ g++ CXX)
 project(carbon VERSION 0.0.1 LANGUAGES CXX)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+	set(CMAKE_BUILD_TYPE Release CACHE STRING "Build Type" FORCE)
+	set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release
+		RelWithDebInfo MinSizeRel)
+endif()
+option(CARBON_NATIVE "Optimize for the host CPU (-march=native)" OFF)
 
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -9,6 +16,9 @@ option(CARBON_USE_BLAS "Option for using BLAS for f32 / f64 kernels" ON)
 
 set(SOURCES src/carbon.cpp)
 add_executable(carbon main.cpp ${SOURCES})
+if(CARBON_NATIVE)
+	target_compile_options(carbon PRIVATE -march=native)
+endif()
 target_include_directories(carbon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 
