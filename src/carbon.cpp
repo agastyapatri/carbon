@@ -5,12 +5,19 @@
 #include <concepts>
 #include <execution>
 #include <iomanip>
+#include <random>
 #include <stdexcept>
 
 namespace carbon {
 
-template <typename T>
-std::mt19937 tensor<T>::rand_engine(std::random_device{}());
+namespace detail{
+std::mt19937_64& rand_engine(){
+	static std::mt19937_64 engine(std::random_device{}()); 
+	return engine;
+}
+}
+
+void manual_seed(u32 seed) {detail::rand_engine().seed(seed);}
 
 template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 	_shape = shape;
@@ -141,8 +148,9 @@ requires std::floating_point<T>
 {
 	tensor<T> out(shape);
 	std::normal_distribution<T> dist(mean, std);
+	auto &gen = detail::rand_engine();
 	std::generate(out._data.begin(), out._data.end(),
-			   [&]() -> T { return dist(rand_engine); });
+			   [&]() -> T { return dist(gen); });
 	return out;
 }
 
@@ -153,14 +161,26 @@ requires std::floating_point<T>
 	return tensor<T>::rand_normal(shape, 0, 1);
 }
 
+template<typename T>
+tensor<T> tensor<T>::randint(std::vector<i32> shape, T low , T high)
+requires std::integral<T>
+{
+	tensor<T> out(shape);
+	std::uniform_int_distribution<T> dist(low, high);
+	auto &gen = detail::rand_engine();
+	std::generate(out._data.begin(), out._data.end(), [&]() -> T {return dist(gen);});
+	return out;
+}
+
 template <typename T>
 tensor<T> tensor<T>::randu(std::vector<i32> shape, T low, T high)
 requires std::floating_point<T>
 {
 	tensor out(shape);
 	std::uniform_real_distribution<T> dist(low, high);
+	auto &gen = detail::rand_engine();
 	std::generate(out._data.begin(), out._data.end(),
-			   [&]() -> T { return dist(rand_engine); });
+			   [&]() -> T { return dist(gen); });
 	return out;
 }
 
@@ -507,4 +527,10 @@ template tensor<f32> gemv(const tensor<f32> &inp1, const tensor<f32> &inp2);
 template tensor<f64> gemv(const tensor<f64> &inp1, const tensor<f64> &inp2);
 template tensor<i32> gemv(const tensor<i32> &inp1, const tensor<i32> &inp2);
 template tensor<i64> gemv(const tensor<i64> &inp1, const tensor<i64> &inp2);
+
+
+
+
+
+
 } // namespace carbon

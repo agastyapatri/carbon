@@ -13,4 +13,3 @@ carbon is a tiny C++20 tensor library
 
 
 ### TODOs 
-1.  Support for other LA libs beyond OpenBLAS

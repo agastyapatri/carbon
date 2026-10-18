@@ -4,20 +4,16 @@
 #include <numbers>
 #include <chrono> 
 #define type carbon::f64
-#define LEN 1000
+#define LEN 100
 using tensor = carbon::tensor<type>;
 
 
 int main(){
-	tensor::manual_seed(0);
-	tensor a = tensor::randn({LEN, LEN});
-	tensor b = tensor::randn({LEN, LEN});
-	auto start = std::chrono::high_resolution_clock::now(); 
-	tensor c = carbon::gemm(a, b);
-	auto end = std::chrono::high_resolution_clock::now(); 
-	std::chrono::duration<carbon::f64, std::milli> elapsed = end - start; 
-	std::cout << "time taken for matmul of " << LEN << "x" << LEN << " matrices: " << elapsed.count() << '\n';
-
+	carbon::manual_seed(0);
+	carbon::tensor<carbon::f32> a = carbon::tensor<carbon::f32>::randn({10});
+	carbon::tensor<carbon::f64> b = carbon::tensor<carbon::f64>::randn({10});
+	std::cout << a << "\n\n";
+	std::cout << b << "\n\n";
 
 	return 0;
 }

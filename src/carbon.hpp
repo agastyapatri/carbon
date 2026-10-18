@@ -10,7 +10,6 @@
 #include <vector>
 
 namespace carbon {
-
 typedef uint32_t u32;
 typedef uint64_t u64;
 typedef uint8_t u08;
@@ -20,13 +19,16 @@ typedef float f32;
 typedef double f64;
 static constexpr int PARALLEL_THRESHOLD = 65536; // 2^16
 
+namespace detail{
+	std::mt19937_64& rand_engine();
+}
+void manual_seed(u32 seed); 
+
+
 template <typename U> class tensor;
 
 template <typename U>
 tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);
-
-// template<typename U>
-// tensor<U> matmul(const tensor<U>& inp1, const tensor<U>& inp2);
 
 template <typename U>
 tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
@@ -43,7 +45,6 @@ private:
 	i32 _ndim = 0;
 
 	void compute_strides();
-	static std::mt19937 rand_engine;
 	i64 offset(std::span<const i32> idxs) const;
 
 	bool is_contiguous() const;
@@ -64,7 +65,6 @@ private:
 public:
 	tensor() = default;
 	tensor(std::vector<i32> shape);
-	static void manual_seed(u32 seed) { rand_engine.seed(seed); }
 
 	const std::vector<T> &data() const { return _data; }
 	const std::vector<i32> &shape() const { return _shape; }
@@ -90,6 +90,8 @@ public:
 	requires std::floating_point<T>;
 	static tensor randu(std::vector<i32> shape, T low = T(0), T high = T(1))
 	requires std::floating_point<T>;
+	static tensor randint(std::vector<i32> shape, T low = T(0), T high = T(1))
+	requires std::integral<T>;
 	static tensor randn_he(std::vector<i32> shape, i32 fan_in)
 	requires std::floating_point<T>;
 	static tensor randu_he(std::vector<i32> shape, i32 fan_in)
@@ -123,23 +125,24 @@ public:
 
 	template <typename U>
 	friend std::ostream &operator<<(std::ostream &os, const tensor<U> &t);
+
+	//	TENSOR-TENSOR MATH
 	bool operator==(const tensor<T> &other) const;
 	bool operator!=(const tensor<T> &other) const;
 	tensor operator+(const tensor &other) const;
 	tensor operator-(const tensor &other) const;
 	// tensor operator*(const tensor& other) const;
 	// tensor operator/(const tensor& other) const;
+
+	// TENSOR - SCALAR MATH
 	// tensor operator*(f32 scalar) const;
 	// tensor operator/(f32 scalar) const;
 	// tensor operator+(f32 scalar) const;
-
 	// tensor operator-(f32 scalar) const;
-	// tensor pow(const f32 exponent) const;
+
 	template <typename U>
 	friend tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);
 
-	// template<typename U>
-	// friend tensor<U> matmul(const tensor<U>& inp1, const tensor<U>& inp2);
 
 	template <typename U>
 	friend tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
