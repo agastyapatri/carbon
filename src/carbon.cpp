@@ -649,27 +649,27 @@ tensor<T> tensor<T>::operator/(const tensor& other) const{
 }
 
 
-template<typename T> tensor<T> tensor<T>::operator+(f32 scalar) const{
+template<typename T> tensor<T> tensor<T>::operator+(T scalar) const{
 	tensor<T> out(_shape);
 	for (i64 i = 0; i < out._numel; i++)
 		out._data[i] = this->_data[i] + scalar;
 	return out;
 }
-template<typename T> tensor<T> tensor<T>::operator-(f32 scalar) const{
+template<typename T> tensor<T> tensor<T>::operator-(T scalar) const{
 	tensor<T> out(_shape);
 	for (i64 i = 0; i < out._numel; i++)
 		out._data[i] = this->_data[i] - scalar;
 	return out;
 
 }
-template<typename T> tensor<T> tensor<T>::operator*(f32 scalar) const{
+template<typename T> tensor<T> tensor<T>::operator*(T scalar) const{
 	tensor<T> out(_shape);
 	for (i64 i = 0; i < out._numel; i++)
 		out._data[i] = this->_data[i] * scalar;
 	return out;
 
 }
-template<typename T> tensor<T> tensor<T>::operator/(f32 scalar) const{
+template<typename T> tensor<T> tensor<T>::operator/(T scalar) const{
 	tensor<T> out(_shape);
 	for (i64 i = 0; i < out._numel; i++)
 		out._data[i] = this->_data[i] / scalar;
@@ -717,6 +717,126 @@ tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2) {
 	return out;
 }
 
+template <typename U> tensor<U> 
+sin(const tensor<U>& inp) 
+{
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(std::sin(x));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+
+template <typename U> tensor<U> cos(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(std::cos(x));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+
+template <typename U> tensor<U> log(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(std::log(x));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> tanh(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(std::tanh(x));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> exp(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(std::exp(x));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> sigmoid(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(1 / (1 + std::exp(-x)));};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> relu(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return static_cast<U>(x > 0 ? x : 0);};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> cube(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return x*x*x;};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+template <typename U> tensor<U> square(const tensor<U>& inp){
+	tensor<U> out(inp._shape);
+	auto gen = [](U x){return x*x;};
+	if (out._numel >= PARALLEL_THRESHOLD) {
+		std::transform(std::execution::par_unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	} else {
+		std::transform(std::execution::unseq, inp._data.begin(), inp._data.end(),
+				 out._data.begin(), gen);
+	}
+	return out;
+}
+//
+
 //	explicit instantation, apparently
 template class tensor<f32>;
 template class tensor<f64>;
@@ -727,10 +847,6 @@ template std::ostream &operator<<(std::ostream &os, const tensor<f64> &t);
 template std::ostream &operator<<(std::ostream &os, const tensor<i32> &t);
 template std::ostream &operator<<(std::ostream &os, const tensor<i64> &t);
 
-template tensor<f32> dot(const tensor<f32> &inp1, const tensor<f32> &inp2);
-template tensor<f64> dot(const tensor<f64> &inp1, const tensor<f64> &inp2);
-template tensor<i32> dot(const tensor<i32> &inp1, const tensor<i32> &inp2);
-template tensor<i64> dot(const tensor<i64> &inp1, const tensor<i64> &inp2);
 
 template tensor<f32> gemm(const tensor<f32> &inp1, const tensor<f32> &inp2);
 template tensor<f64> gemm(const tensor<f64> &inp1, const tensor<f64> &inp2);
@@ -743,8 +859,37 @@ template tensor<i32> gemv(const tensor<i32> &inp1, const tensor<i32> &inp2);
 template tensor<i64> gemv(const tensor<i64> &inp1, const tensor<i64> &inp2);
 
 
+template tensor<f32> dot(const tensor<f32> &inp1, const tensor<f32> &inp2);
+template tensor<f32> sin(const tensor<f32>& inp);
+template tensor<f32> cos(const tensor<f32>& inp) ;
+template tensor<f32> log(const tensor<f32>& inp) ;
+template tensor<f32> tanh(const tensor<f32>& inp);
+template tensor<f32> exp(const tensor<f32>& inp) ;
+template tensor<f32> sigmoid(const tensor<f32>& inp);
+template tensor<f32> relu(const tensor<f32>& inp);
+template tensor<f32> cube(const tensor<f32>& inp);
+template tensor<f32> square(const tensor<f32>& inp);
+//
+//
+template tensor<f64> dot(const tensor<f64> &inp1, const tensor<f64> &inp2);
+template tensor<f64> sin(const tensor<f64>& inp) ;
+template tensor<f64> cos(const tensor<f64>& inp) ;
+template tensor<f64> log(const tensor<f64>& inp) ;
+template tensor<f64> tanh(const tensor<f64>& inp);
+template tensor<f64> exp(const tensor<f64>& inp) ;
+template tensor<f64> sigmoid(const tensor<f64>& inp); 
+template tensor<f64> relu(const tensor<f64>& inp);
+template tensor<f64> cube(const tensor<f64>& inp);
+template tensor<f64> square(const tensor<f64>& inp);
+//
+template tensor<i32> dot(const tensor<i32> &inp1, const tensor<i32> &inp2);
+template tensor<i32> cube(const tensor<i32>& inp);
+template tensor<i32> square(const tensor<i32>& inp);
+template tensor<i32> relu(const tensor<i32>& inp);
 
-
-
-
+//
+template tensor<i64> dot(const tensor<i64> &inp1, const tensor<i64> &inp2);
+template tensor<i64> cube(const tensor<i64>& inp);
+template tensor<i64> square(const tensor<i64>& inp);
+template tensor<i64> relu(const tensor<i64>& inp);
 } // namespace carbon

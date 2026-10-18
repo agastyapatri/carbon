@@ -36,6 +36,17 @@ tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
 template <typename U>
 tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
 
+template <typename U> tensor<U> sin(const tensor<U>& inp)  ;
+template <typename U> tensor<U> cos(const tensor<U>& inp)  ;
+template <typename U> tensor<U> log(const tensor<U>& inp)  ;
+template <typename U> tensor<U> tanh(const tensor<U>& inp) ;
+template <typename U> tensor<U> exp(const tensor<U>& inp)  ;
+template <typename U> tensor<U> sigmoid(const tensor<U>& inp); 
+template <typename U> tensor<U> relu(const tensor<U>& inp);
+template <typename U> tensor<U> cube(const tensor<U>& inp);
+template <typename U> tensor<U> square(const tensor<U>& inp);
+
+
 template <typename T> class tensor {
 private:
 	std::vector<T> _data;
@@ -64,7 +75,7 @@ private:
 
 public:
 	tensor() = default;
-	tensor(std::vector<i32> shape);
+	explicit tensor(std::vector<i32> shape);
 
 	const std::vector<T> &data() const { return _data; }
 	const std::vector<i32> &shape() const { return _shape; }
@@ -138,20 +149,30 @@ public:
 	tensor operator/(const tensor& other) const;
 
 	// TENSOR - SCALAR MATH
-	tensor operator*(f32 scalar) const;
-	tensor operator/(f32 scalar) const;
-	tensor operator+(f32 scalar) const;
-	tensor operator-(f32 scalar) const;
+	tensor operator*(T scalar) const;
+	tensor operator/(T scalar) const;
+	tensor operator+(T scalar) const;
+	tensor operator-(T scalar) const;
 
 	template <typename U>
 	friend tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);
-
 
 	template <typename U>
 	friend tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
 
 	template <typename U>
 	friend tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
+
+	template <typename U> friend tensor<U> sin(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> cos(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> log(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> tanh(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> exp(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> sigmoid(const tensor<U>& inp) ;
+	template <typename U> friend tensor<U> relu(const tensor<U>& inp);
+	template <typename U> friend tensor<U> cube(const tensor<U>& inp);
+	template <typename U> friend tensor<U> square(const tensor<U>& inp);
+
 };
 
 } // namespace carbon
