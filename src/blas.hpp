@@ -13,6 +13,7 @@ using CBLAS_LAYOUT = CBLAS_ORDER;
 #endif
 
 
+
 template<typename T>
 struct blas {
     static void axpy(i32 n, T alpha, const T* x, i32 incx,T* y, i32 incy){

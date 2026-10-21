@@ -9,6 +9,7 @@
 #include <span>
 #include <vector>
 
+
 namespace carbon {
 typedef uint32_t u32;
 typedef uint64_t u64;
@@ -35,6 +36,9 @@ tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
 
 template <typename U>
 tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
+
+template <typename U>
+tensor<U> matmul(const tensor<U> &inp1, const tensor<U> &inp2);
 
 template <typename U> tensor<U> sin(const tensor<U>& inp)  ;
 template <typename U> tensor<U> cos(const tensor<U>& inp)  ;
@@ -163,6 +167,9 @@ public:
 	template <typename U>
 	friend tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
 
+	template <typename U>
+	friend tensor<U> matmul(const tensor<U> &inp1, const tensor<U> &inp2);
+
 	template <typename U> friend tensor<U> sin(const tensor<U>& inp) ;
 	template <typename U> friend tensor<U> cos(const tensor<U>& inp) ;
 	template <typename U> friend tensor<U> log(const tensor<U>& inp) ;
@@ -173,8 +180,42 @@ public:
 	template <typename U> friend tensor<U> cube(const tensor<U>& inp);
 	template <typename U> friend tensor<U> square(const tensor<U>& inp);
 
+
+	//	TODO: views and shape ops; the function signatures are not solid yet.
+	void reshape();
+	void transpose();
+	void slice();
+	void contiguous();
+	void clone();
+
+
+	//	TODO: Axis reductions with keepdim
+	void sum(); 
+	void mean();
+	void max(); 
+
+
+	//	TODO: NN ops 
+	void softmax(); 
+	void layernorm();
+
+
+
+
+
+
+
+
 };
 
+typedef  carbon::tensor<carbon::f32> tf32;
+typedef  carbon::tensor<carbon::f32> tf32;
+typedef  carbon::tensor<carbon::i32> ti32;
+typedef  carbon::tensor<carbon::i64> ti64;
+
 } // namespace carbon
+//
+
 
 #endif
+

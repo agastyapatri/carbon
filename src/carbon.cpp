@@ -1,6 +1,7 @@
 #include "carbon.hpp"
 #include "blas.hpp"
 #include <algorithm>
+#include <ostream>
 #include <cassert>
 #include <concepts>
 #include <execution>
