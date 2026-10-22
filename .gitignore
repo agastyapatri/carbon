@@ -5,3 +5,4 @@ cmake/
 *.o 
 .cache/
 build_noblas/
+carbon_harness/

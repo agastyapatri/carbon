@@ -30,6 +30,17 @@ template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 	_data.resize(_numel, T(0.0));
 }
 
+template <typename T> tensor<T>::tensor(std::vector<i32> shape, std::vector<T> data) {
+	_shape = shape;
+	_ndim = shape.size();
+	_numel = 1;
+	for (int i : shape)
+	_numel *= i;
+	compute_strides();
+	_data = data;
+}
+
+
 template <typename T> bool tensor<T>::is_contiguous() const {
 	i64 expected_stride = 1;
 	for (i32 i = _ndim - 1; i >= 0; i--) {
@@ -322,42 +333,55 @@ requires std::floating_point<T>
 }
 
 template <typename U>
-static inline void print_tensor_recursive(std::ostream &os, const tensor<U> &t,
-										  int dim, i64 offset, int depth) {
+static void print_tensor_recursive(std::ostream &os, const tensor<U> &t,
+                                   i32 dim, i64 offset, int width) {
+	os << "[";
+	const i32 n = t.shape()[dim];
+	const i64 stride = t.strides()[dim];
 	if (dim == t.ndim() - 1) {
-		os << "[";
-		for (int i = 0; i < t.shape()[dim]; i++) {
-			os << std::setw(10) << std::fixed << std::setprecision(7)
-				<< t.data()[offset + i * t.strides()[dim]];
-			if (i < t.shape()[dim] - 1)
-				os << ", ";
+		for (i32 i = 0; i < n; i++) {
+			os << std::setw(width) << t.data()[offset + i * stride];
+			if (i < n - 1) os << ", ";
 		}
-		os << "]";
 	} else {
-		os << "[";
-		for (int i = 0; i < t.shape()[dim]; i++) {
-			print_tensor_recursive(os, t, dim + 1, offset + i * t.strides()[dim],
-						  depth + 1);
-			if (i < t.shape()[dim] - 1) {
+		for (i32 i = 0; i < n; i++) {
+			print_tensor_recursive(os, t, dim + 1, offset + i * stride, width);
+			if (i < n - 1) {
 				os << ",";
-				int newlines = t.ndim() - 1 - dim;
-				for (int n = 0; n < newlines; n++)
-					os << "\n";
-				for (int d = 0; d < depth + 1; d++)
-					os << " ";
+				for (i32 k = 0; k < t.ndim() - 1 - dim; k++) os << "\n";
+				for (i32 k = 0; k <= dim; k++) os << " ";
 			}
 		}
-		os << "]";
 	}
+	os << "]";
 }
+
 template <typename U>
 std::ostream &operator<<(std::ostream &os, const tensor<U> &t) {
-	if (t._ndim == 0) {
-		os << "[" << t._data[0] << "]";
-		return os;
+	const std::ios_base::fmtflags old_flags = os.flags();
+	const std::streamsize old_prec = os.precision();
+	if constexpr (std::floating_point<U>) {
+		os << std::fixed << std::setprecision(7);
 	}
-	print_tensor_recursive(os, t, 0, 0, 0);
-	os << "\n";
+
+	if (t.data().empty() && t.ndim() == 0) {          // default-constructed
+		os << "[]";
+	} else if (t.ndim() == 0) {                        // 0-d scalar
+		os << "[" << t.data()[0] << "]";
+	} else {
+		int width = 0;                                 // widest formatted element
+		std::ostringstream probe;
+		probe.copyfmt(os);
+		for (U v : t) {
+			probe.str("");
+			probe << v;
+			width = std::max(width, static_cast<int>(probe.str().size()));
+		}
+		print_tensor_recursive(os, t, 0, 0, width);
+	}
+
+	os.flags(old_flags);
+	os.precision(old_prec);
 	return os;
 }
 

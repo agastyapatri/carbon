@@ -80,6 +80,7 @@ private:
 public:
 	tensor() = default;
 	explicit tensor(std::vector<i32> shape);
+	explicit tensor(std::vector<i32> shape, std::vector<T> data); 
 
 	const std::vector<T> &data() const { return _data; }
 	const std::vector<i32> &shape() const { return _shape; }
@@ -208,10 +209,10 @@ public:
 
 };
 
-typedef  carbon::tensor<carbon::f32> tf32;
-typedef  carbon::tensor<carbon::f32> tf32;
-typedef  carbon::tensor<carbon::i32> ti32;
-typedef  carbon::tensor<carbon::i64> ti64;
+typedef tensor<f32> tf32;
+typedef tensor<f64> tf64;
+typedef tensor<i32> ti32;
+typedef tensor<i64> ti64;
 
 } // namespace carbon
 //
