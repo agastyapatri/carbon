@@ -7,14 +7,17 @@
 
 namespace carbon{
 #ifndef CARBON_USE_BLAS 
-enum CBLAS_ORDER     {CblasRowMajor=101, CblasColMajor=102} CBLAS_ORDER;
-enum CBLAS_TRANSPOSE {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113, CblasConjNoTrans=114} CBLAS_TRANSPOSE;
-enum CBLAS_UPLO      {CblasUpper=121, CblasLower=122} CBLAS_UPLO;
-enum CBLAS_DIAG      {CblasNonUnit=131, CblasUnit=132} CBLAS_DIAG;
-enum CBLAS_SIDE      {CblasLeft=141, CblasRight=142} CBLAS_SIDE;
+enum CBLAS_ORDER     {CblasRowMajor=101, CblasColMajor=102} ;
+enum CBLAS_TRANSPOSE {CblasNoTrans=111, CblasTrans=112, CblasConjTrans=113, CblasConjNoTrans=114} ;
+enum CBLAS_UPLO      {CblasUpper=121, CblasLower=122} ;
+enum CBLAS_DIAG      {CblasNonUnit=131, CblasUnit=132} ;
+enum CBLAS_SIDE      {CblasLeft=141, CblasRight=142} ;
 using CBLAS_LAYOUT = CBLAS_ORDER;
 #endif
 
+static constexpr bool is_trans(CBLAS_TRANSPOSE t){
+	return ((t = CblasTrans) || (t == CblasConjTrans));
+}
 
 
 template<typename T>
@@ -43,15 +46,20 @@ struct blas {
 	{
 		auto A_at = [&](i32 r, i32 c) -> T{
 			bool row_major = (layout == CblasRowMajor);
-			bool trans = (TransA == CblasTrans);
+			bool trans = is_trans(TransA);
 			if(row_major != trans) return A[r * lda + c];
 			else				   return A[c * lda + r];
 		};
 		auto B_at = [&](i32 r, i32 c) -> T{
 			bool row_major = (layout == CblasRowMajor);
-			bool trans = (TransB == CblasTrans);
+			bool trans = is_trans(TransB);
 			if(row_major != trans) return B[r * ldb + c];
 			else				   return B[c * ldb + r];
+		};
+		auto C_idx = [&](T _alpha, T _acc, T _beta, i32 _c_idx, T* _C) -> T{
+			if(_beta == 0)	return _alpha*_acc; 
+			if(_alpha == 0)	return _beta*_C[_c_idx];
+			else{return _alpha*_acc + _beta*_C[_c_idx];}
 		};
 		for(i32 i = 0; i < M; i++){
 			for(i32 j = 0; j < N; j++){
@@ -60,7 +68,7 @@ struct blas {
 					acc += A_at(i, k) * B_at(k, j);
 				}
 				i32 c_idx = (layout == CblasRowMajor) ? (i * ldc + j) : (j * ldc + i);
-				C[c_idx] = alpha * acc + beta * C[c_idx];
+				C[c_idx] = C_idx(alpha, acc, beta, c_idx, C);
 			} 
 		}
 	}
@@ -78,20 +86,31 @@ struct blas {
 		const T beta,
 		T *y,
 		const int incy){
-			auto A_at = [&](int r, int c) -> T {
-				return (layout == CblasRowMajor) ? a[r * lda + c] : a[c * lda + r];
-			};
-			int out_len = (trans == CblasNoTrans) ? M : N;
-			int sum_len = (trans == CblasNoTrans) ? N : M;
 
-			for (int i = 0; i < out_len; ++i) {
-				T acc = 0;
-				for (int k = 0; k < sum_len; ++k) {
-					T a_val = (trans == CblasNoTrans) ? A_at(i, k) : A_at(k, i);
-					acc += a_val * x[k * incx];
-				}
-				y[i * incy] = alpha * acc + beta * y[i * incy];
+		auto A_at = [&](int r, int c) -> T {
+			return (layout == CblasRowMajor) ? a[r * lda + c] : a[c * lda + r];
+		};
+		bool _is_trans = is_trans(trans);
+		int out_len = _is_trans ? N : M;
+		int sum_len = _is_trans ? M : N;
+		if(alpha == 0){
+			for(int i = 0; i < out_len; ++i){
+				y[i * incy] = (beta == 0) ? T(0) : beta*y[i*incy];
 			}
+			return; 
+		}
+		for (int i = 0; i < out_len; ++i) {
+			T acc = 0;
+			for (int k = 0; k < sum_len; ++k) {
+				T a_val = _is_trans ? A_at(k, i) : A_at(i, k);
+				acc += a_val * x[k * incx];
+			}
+			if(beta == 0){
+				y[i * incy] = alpha * acc;
+				continue; 
+			}
+			y[i * incy] = beta*y[i*incy] + alpha*acc;
+		}
 	}
 };
 

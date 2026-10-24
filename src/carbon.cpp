@@ -33,11 +33,9 @@ template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 template <typename T> tensor<T>::tensor(std::vector<i32> shape, std::vector<T> data) {
 	_shape = shape;
 	_ndim = shape.size();
-	_numel = 1;
-	for (int i : shape)
-	_numel *= i;
 	compute_strides();
-	_data = data;
+	_data = std::move(data);
+	_numel = _data.size(); 
 }
 
 

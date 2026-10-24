@@ -34,6 +34,9 @@ tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);
 template <typename U>
 tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
 
+// template <typename U>
+// tensor<U> gemm(const tensor<U> &inp1, const bool transinp1, const tensor<U> &inp2, const bool transinp2);
+
 template <typename U>
 tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
 
