@@ -1,8 +1,10 @@
 #include "carbon.hpp"
 #include "blas.hpp"
 #include <algorithm>
+#include <cmath>
 #include <ostream>
 #include <cassert>
+#include <sstream> 
 #include <concepts>
 #include <execution>
 #include <iomanip>
@@ -24,8 +26,7 @@ template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 	_shape = shape;
 	_ndim = shape.size();
 	_numel = 1;
-	for (int i : shape)
-	_numel *= i;
+	for (int i : shape)	_numel *= i;
 	compute_strides();
 	_data.resize(_numel, T(0.0));
 }
@@ -33,9 +34,11 @@ template <typename T> tensor<T>::tensor(std::vector<i32> shape) {
 template <typename T> tensor<T>::tensor(std::vector<i32> shape, std::vector<T> data) {
 	_shape = shape;
 	_ndim = shape.size();
+	_numel = 1;
+	for (int i : shape)	_numel *= i;
 	compute_strides();
+	assert(_numel == static_cast<i64>(data.size()));
 	_data = std::move(data);
-	_numel = _data.size(); 
 }
 
 
@@ -382,6 +385,27 @@ std::ostream &operator<<(std::ostream &os, const tensor<U> &t) {
 	os.precision(old_prec);
 	return os;
 }
+
+template <typename U> 
+bool allclose(const tensor<U>& inp1, const tensor<U>& inp2, U rtol, U atol) 
+requires std::floating_point<U>{
+	assert(rtol >= 0 && atol >= 0);
+	if(inp1._shape != inp2._shape)	return false;
+	for(i64 i = 0; i < inp1._numel; i++){
+		if(inp1._data[i] == inp2._data[i])	continue;
+		U diff = std::abs(inp1._data[i] - inp2._data[i]);
+		U tolerance = atol + rtol*std::max(std::abs(inp1._data[i]), std::abs(inp2._data[i]));
+		if(diff > tolerance)	return false;
+	}
+	return true;
+}
+
+template <typename U> 
+bool equal(const tensor<U>& inp1, const tensor<U>& inp2){
+	if(inp1._shape != inp2._shape)	return false;
+	return std::equal(std::execution::unseq, inp1._data.begin(), inp1._data.end(), inp2._data.begin());
+}
+
 
 template <typename T> bool tensor<T>::operator==(const tensor<T> &other) const {
 	return ((_shape == other._shape) && (std::equal(begin(), end(), other.begin())));
@@ -858,7 +882,150 @@ template <typename U> tensor<U> square(const tensor<U>& inp){
 	}
 	return out;
 }
-//
+
+template <typename U> tensor<U> softmax(const tensor<U>& t, i32 dim) requires std::floating_point<U>{
+	// 1. Handle negative dimensions (PyTorch style)
+	if (dim < 0) dim += t.ndim();
+	assert(dim>=0 && dim < t.ndim());
+	tensor<U> out(t.shape());
+	// 2. Calculate spatial components
+	const std::vector<i32>& shape = t.shape();
+	i32 outer_size = 1;
+	for (i32 i = 0; i < dim; ++i) outer_size *= shape[i];
+
+	i32 axis_size = shape[dim];
+
+	i32 inner_size = 1;
+	for (i32 i = dim + 1; i < t.ndim(); ++i) inner_size *= shape[i];
+
+	// 3. Perform Softmax
+	for (i32 o = 0; o < outer_size; ++o) {
+		for (i32 i = 0; i < inner_size; ++i) {
+			// Determine the offset for this specific slice
+			u64 base_idx = (o * axis_size * inner_size) + i;
+
+			// Step A: Find Max for stability
+			U max_val = t.data()[base_idx];
+			for (i32 a = 1; a < axis_size; ++a) {
+				U val = t.data()[base_idx + (a * inner_size)];
+				if (val > max_val) max_val = val;
+			}
+
+			// Step B: Compute Exponentials and Sum
+			U sum_exp = 0.0f;
+			for (i32 a = 0; a < axis_size; ++a) {
+				u64 current_idx = base_idx + (a * inner_size);
+				U e = std::exp(t.data()[current_idx] - max_val);
+				out._data[current_idx] = e;
+				sum_exp += e;
+			}
+
+			// Step C: Normalize
+			U inv_sum = 1.0f / (sum_exp + 1e-9f);
+			for (i32 a = 0; a < axis_size; ++a) {
+				out._data[base_idx + (a * inner_size)] *= inv_sum;
+			}
+		}
+	}
+
+	return out;
+}
+
+template <typename U> tensor<U> rmsnorm(const tensor<U>& t) requires std::floating_point<U>{
+	tensor<U> out(t.shape());
+	i32 last_dim = t.shape().back();
+	u64 num_rows = t.numel() / last_dim;
+	f32 eps = 1e-6f;
+
+	for (u64 r = 0; r < num_rows; ++r) {
+		u64 offset = r * last_dim;
+		const U* in_ptr = t.data().data() + offset;
+		U* out_ptr = out._data.data() + offset;
+
+		// 1. Calculate Mean Square
+		U ss = 0.0f; // sum of squares
+		for (i32 i = 0; i < last_dim; ++i) {
+			ss += in_ptr[i] * in_ptr[i];
+		}
+		U inv_rms = 1.0f / std::sqrt((ss / last_dim) + eps);
+
+		// 2. Scale
+		for (i32 i = 0; i < last_dim; ++i) {
+			out_ptr[i] = in_ptr[i] * inv_rms;
+		}
+	}
+	return out;
+
+}
+template <typename U> tensor<U> layernorm(const tensor<U>& t) requires std::floating_point<U>{
+	tensor<U> out(t.shape());
+	i32 last_dim = t.shape().back();
+	u64 num_rows = t.numel() / last_dim;
+	f32 eps = 1e-6f;
+
+	for (u64 r = 0; r < num_rows; ++r) {
+		u64 offset = r * last_dim;
+		const U* in_ptr = t.data().data() + offset;
+		U* out_ptr = out._data.data() + offset;
+
+		// 1. Calculate Mean
+		U mean = 0.0f;
+		for (i32 i = 0; i < last_dim; ++i) mean += in_ptr[i];
+		mean /= last_dim;
+
+		// 2. Calculate Variance
+		U var = 0.0f;
+		for (i32 i = 0; i < last_dim; ++i) {
+			f32 diff = in_ptr[i] - mean;
+			var += diff * diff;
+		}
+		U inv_std = 1.0f / std::sqrt((var / last_dim) + eps);
+
+		// 3. Normalize: (x - mean) * inv_std
+		for (i32 i = 0; i < last_dim; ++i) {
+			out_ptr[i] = (in_ptr[i] - mean) * inv_std;
+		}
+	}
+	return out;
+
+}
+
+
+
+
+// tensor tensor::sum (u32 axis) const {
+// 	vi32 outshape = reduced_shape(axis);
+// 	tensor out(outshape);
+// 	for(u64 i = 0; i < this->_numel; i++){
+// 		//	finding which element in the flat array belongs to which dimension
+// 		u64 temp_idx = i; 
+// 		vi32 coords = flat_idx_to_coord(temp_idx);
+// 		u64 out_idx  = 0; 
+// 		i32 out_dim_counter = 0; 
+// 		for(i32 j = 0; j < this->_ndim; j++){
+// 			if(j == (i32)axis)	continue;
+// 			out_idx += coords[j] * out._strides[out_dim_counter];
+// 			out_dim_counter++;
+// 		}
+// 		out._data[out_idx] += this->_data[i];
+// 	}
+// 	return out;
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //	explicit instantation, apparently
 template class tensor<f32>;
@@ -915,4 +1082,18 @@ template tensor<i64> dot(const tensor<i64> &inp1, const tensor<i64> &inp2);
 template tensor<i64> cube(const tensor<i64>& inp);
 template tensor<i64> square(const tensor<i64>& inp);
 template tensor<i64> relu(const tensor<i64>& inp);
+
+template tensor<f32> softmax(const tensor<f32>& t, i32 dim);
+template tensor<f32> rmsnorm(const tensor<f32>& t);
+template tensor<f32> layernorm(const tensor<f32>& t);
+
+template tensor<f64> softmax(const tensor<f64>& t, i32 dim);
+template tensor<f64> rmsnorm(const tensor<f64>& t);
+template tensor<f64> layernorm(const tensor<f64>& t);
+
+
+
+
+
 } // namespace carbon
+//

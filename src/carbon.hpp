@@ -4,6 +4,7 @@
 // #include "blas.hpp"
 #include <concepts>
 #include <cstdint>
+#include <iosfwd>
 #include <optional>
 #include <random>
 #include <span>
@@ -34,14 +35,17 @@ tensor<U> dot(const tensor<U> &inp1, const tensor<U> &inp2);
 template <typename U>
 tensor<U> gemm(const tensor<U> &inp1, const tensor<U> &inp2);
 
-// template <typename U>
-// tensor<U> gemm(const tensor<U> &inp1, const bool transinp1, const tensor<U> &inp2, const bool transinp2);
-
 template <typename U>
 tensor<U> gemv(const tensor<U> &inp1, const tensor<U> &inp2);
 
-template <typename U>
-tensor<U> matmul(const tensor<U> &inp1, const tensor<U> &inp2);
+
+//	TODO
+template <typename U> tensor<U> matmul(const tensor<U> &inp1, const tensor<U> &inp2);
+template <typename U> tensor<f64> sum(const tensor<U>& inp);
+template <typename U> tensor<f64> mean(const tensor<U>& inp);
+template <typename U> tensor<f64> std(const tensor<U>& inp);
+template <typename U> tensor<U> max(const tensor<U>& inp);
+template <typename U> tensor<U> min(const tensor<U>& inp);
 
 template <typename U> tensor<U> sin(const tensor<U>& inp)  ;
 template <typename U> tensor<U> cos(const tensor<U>& inp)  ;
@@ -52,6 +56,11 @@ template <typename U> tensor<U> sigmoid(const tensor<U>& inp);
 template <typename U> tensor<U> relu(const tensor<U>& inp);
 template <typename U> tensor<U> cube(const tensor<U>& inp);
 template <typename U> tensor<U> square(const tensor<U>& inp);
+template <typename U> tensor<U> softmax(const tensor<U>& t, i32 dim) requires std::floating_point<U>;
+template <typename U> tensor<U> rmsnorm(const tensor<U>& t) requires std::floating_point<U>;
+template <typename U> tensor<U> layernorm(const tensor<U>& t) requires std::floating_point<U>;
+template <typename U> bool allclose(const tensor<U>& inp1, const tensor<U>& inp2, U rtol=1e-5, U atol=1e-8) requires std::floating_point<U>;
+template <typename U> bool equal(const tensor<U>& inp1, const tensor<U>& inp2);
 
 
 template <typename T> class tensor {
@@ -183,6 +192,8 @@ public:
 	template <typename U> friend tensor<U> relu(const tensor<U>& inp);
 	template <typename U> friend tensor<U> cube(const tensor<U>& inp);
 	template <typename U> friend tensor<U> square(const tensor<U>& inp);
+	template <typename U> friend bool allclose(const tensor<U>& inp1, const tensor<U>& inp2, U rtol, U atol) requires std::floating_point<U>;
+	template <typename U> friend bool equal(const tensor<U>& inp1, const tensor<U>& inp2);
 
 
 	//	TODO: views and shape ops; the function signatures are not solid yet.
@@ -194,14 +205,16 @@ public:
 
 
 	//	TODO: Axis reductions with keepdim
-	void sum(); 
-	void mean();
-	void max(); 
+	template <typename U> friend tensor<f64> sum(const tensor<U>& inp);
+	template <typename U> friend tensor<f64> mean(const tensor<U>& inp);
+	template <typename U> friend tensor<f64> std(const tensor<U>& inp);
+	template <typename U> friend tensor<U> max(const tensor<U>& inp);
+	template <typename U> friend tensor<U> min(const tensor<U>& inp);
 
 
-	//	TODO: NN ops 
-	void softmax(); 
-	void layernorm();
+	template <typename U> friend tensor<U> softmax(const tensor<U>& t, i32 dim) requires std::floating_point<U>;
+	template <typename U> friend tensor<U> rmsnorm(const tensor<U>& t) requires std::floating_point<U>;
+	template <typename U> friend tensor<U> layernorm(const tensor<U>& t) requires std::floating_point<U>;
 
 
 

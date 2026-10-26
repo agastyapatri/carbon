@@ -16,7 +16,7 @@ using CBLAS_LAYOUT = CBLAS_ORDER;
 #endif
 
 static constexpr bool is_trans(CBLAS_TRANSPOSE t){
-	return ((t = CblasTrans) || (t == CblasConjTrans));
+	return ((t == CblasTrans) || (t == CblasConjTrans));
 }
 
 
